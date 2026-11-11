@@ -3,9 +3,10 @@
 import { on } from '../../core/events.js';
 import { DEFAULT_BINDINGS, keyCaption } from '../../core/input.js';
 import { icon } from '../icons.js';
-import { el, sectionTitle, slider, toggle, segmented } from '../kit.js';
+import { el, sectionTitle, slider, toggle, segmented, sections, isTouch } from '../kit.js';
 
 const QUALITY_OPTIONS = [
+  { id: 'mobile', label: 'Мобильное', title: 'Для телефонов и планшетов: лёгкая картинка, ровная частота кадров' },
   { id: 'low', label: 'Низкое', title: 'Для встроенной графики: короткая дальность, без теней и травы' },
   { id: 'medium', label: 'Среднее', title: 'Тени и трава вблизи' },
   { id: 'high', label: 'Высокое', title: 'Полная дальность, мягкие тени, постобработка' },
@@ -28,6 +29,23 @@ const CONTROL_GROUPS = [
   ['Экраны', [
     ['Инвентарь', ['inventory']], ['Персонаж', ['character']], ['Умения', ['skills']], ['Ремесло', ['crafting']],
     ['Журнал', ['journal']], ['Карта', ['map']], ['Караван', ['caravan']], ['Меню', ['menu']],
+  ]],
+];
+
+/** Touch scheme shown instead of the key table on phones and tablets: [group, [[what, how]…]]. */
+const TOUCH_GROUPS = [
+  ['Движение и камера', [
+    ['Движение', 'левый стик'], ['Камера', 'свайп в правой части экрана'], ['Дистанция камеры', 'щипок двумя пальцами'],
+  ]],
+  ['Бой', [
+    ['Атака', 'кнопка справа'], ['Перекат', 'кнопка справа'], ['Прыжок', 'кнопка справа'], ['Выбор цели', 'кнопка справа'],
+    ['Умения', 'касание панели умений'], ['Быстрые слоты', 'касание слота'],
+  ]],
+  ['Мир', [
+    ['Взаимодействие', 'кнопка действия справа'], ['Меню и экраны', 'кнопки у края экрана'],
+  ]],
+  ['В меню', [
+    ['Подсказка о предмете', 'долгое нажатие'], ['Карта', 'один палец — двигать, щипок — масштаб'],
   ]],
 ];
 
@@ -78,9 +96,9 @@ function createSettingsScreen(g) {
     ])),
 
     sectionTitle('Управление'),
-    row('Чувствительность мыши', null,
+    row(isTouch() ? 'Чувствительность камеры' : 'Чувствительность мыши', null,
       slider({ value: settings.mouseSensitivity, min: 0.3, max: 2.5, step: 0.05, format: v => `×${v.toFixed(2).replace('.', ',')}`, onChange: bind('mouseSensitivity') }), 'mouseSensitivity'),
-    row('Инверсия оси Y', 'Мышь вверх — камера вниз', toggle({ value: settings.invertY, onChange: bind('invertY') }), 'invertY'),
+    row('Инверсия оси Y', isTouch() ? 'Свайп вверх — камера вниз' : 'Мышь вверх — камера вниз', toggle({ value: settings.invertY, onChange: bind('invertY') }), 'invertY'),
 
     sectionTitle('Интерфейс'),
     row('Размер интерфейса', 'Компас, полосы, панель умений',
@@ -88,8 +106,15 @@ function createSettingsScreen(g) {
     row('Числа урона', 'Всплывающие цифры над целью', toggle({ value: settings.damageNumbers, onChange: bind('damageNumbers') }), 'damageNumbers'),
   ]);
 
-  const controlsTable = el('div.set-keys');
-  for (const [caption, rows] of CONTROL_GROUPS) {
+  const touch = isTouch();
+  const controlsTable = el('div.set-keys', { class: touch ? 'touch' : '' });
+  for (const [caption, rows] of touch ? TOUCH_GROUPS : []) {
+    controlsTable.append(el('div.set-keys-group', { text: caption }));
+    for (const [label, gesture] of rows) {
+      controlsTable.append(el('div.set-keys-row', null, [el('span', { text: label }), el('i'), el('span.set-keys-touch', { text: gesture })]));
+    }
+  }
+  for (const [caption, rows] of touch ? [] : CONTROL_GROUPS) {
     controlsTable.append(el('div.set-keys-group', { text: caption }));
     for (const [label, actions] of rows) {
       const keys = el('span.set-keys-caps');
@@ -110,9 +135,14 @@ function createSettingsScreen(g) {
         el('div.set-gpu-hint', { text: 'Сборка для Electron принудительно выбирает дискретную видеокарту. В браузере выбор делает система: если здесь указана встроенная графика, назначьте браузеру «высокую производительность» в настройках графики Windows.' }),
       ]),
     ]),
-    sectionTitle('Управление', 'назначения по умолчанию'),
+    sectionTitle('Управление', touch ? 'сенсорный экран' : 'назначения по умолчанию'),
     controlsTable,
   ]);
+  // mobile: options and the controls reference are two sections of a side rail
+  const rail = sections({ items: [
+    { id: 'options', label: 'Настройки', icon: 'settings', nodes: [left] },
+    { id: 'controls', label: 'Управление', icon: 'hand', nodes: [right] },
+  ] });
 
   on('settings:changed', payload => {
     const control = payload && controls.get(payload.key);
@@ -120,7 +150,7 @@ function createSettingsScreen(g) {
   });
 
   return {
-    el: el('div.set-view', null, [left, right]),
+    el: el('div.set-view', null, [rail.el, left, right]),
     onOpen() {
       gpuName.textContent = (g.view && g.view.gpuName) || 'Видеокарта не определена';
       for (const [key, control] of controls) {

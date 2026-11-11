@@ -15,7 +15,7 @@ import { repRank } from '../../sim/reputation.js';
 import { gatherSkillInfo } from '../../sim/gathering.js';
 import { icon } from '../icons.js';
 import { statusIcon, statusHarmful } from '../markers.js';
-import { el, sectionTitle, statRow, bar, progressRing, tag, formatNumber, STAT_NAMES } from '../kit.js';
+import { el, sectionTitle, statRow, bar, progressRing, tag, sections, formatNumber, STAT_NAMES } from '../kit.js';
 import { live, safe, render, percent, gameNow, note, STATE_EVENTS } from '../screen-kit.js';
 
 const ATTRIBUTE_ICONS = { strength: 'sword', agility: 'dash', endurance: 'heart', wits: 'focus' };
@@ -223,13 +223,19 @@ function createCharacter(g, ui) {
   }
 
   const watch = live(STATE_EVENTS, refresh);
+  // mobile: the three columns become sections of a side rail
+  const rail = sections({ items: [
+    { id: 'hero', label: 'Герой', icon: 'character', nodes: [left] },
+    { id: 'stats', label: 'Параметры', icon: 'swords', nodes: [middle] },
+    { id: 'world', label: 'Мир', icon: 'city', nodes: [right] },
+  ] });
   return {
-    el: el('div.chr-view', null, [left, middle, right]),
+    el: el('div.chr-view', null, [rail.el, left, middle, right]),
     onOpen() {
       watch.start();
       refresh();
     },
     onClose: () => watch.stop(),
-    hints: () => [{ key: 'skills', label: 'Умения', onClick: () => ui.open('skills') }],
+    hints: () => [{ key: 'skills', label: 'Умения', touch: false, onClick: () => ui.open('skills') }],
   };
 }

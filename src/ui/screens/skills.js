@@ -9,7 +9,7 @@ import { abilityRank, abilityCost, hasPerk, learningPoints, TRAINING } from '../
 import { derivedStats } from '../../sim/stats.js';
 import { getRep } from '../../sim/reputation.js';
 import { icon } from '../icons.js';
-import { el, sectionTitle, costLine, tag, keyHint, tabs, STAT_NAMES } from '../kit.js';
+import { el, sectionTitle, costLine, tag, keyHint, tabs, sections, STAT_NAMES } from '../kit.js';
 import { live, safe, render, percent, pips, note, cityName, ROLE_NAMES, STATE_EVENTS } from '../screen-kit.js';
 
 const CITY_ORDER = ['valley', 'ford', 'harbor'];
@@ -204,16 +204,20 @@ function createSkills(g, ui) {
   }
 
   const watch = live(STATE_EVENTS, refresh);
+  const leftPane = el('div.skl-left', null, [head, sectionTitle('Боевые умения'), cards]);
+  const rightPane = el('div.skl-right', null, [sectionTitle('Таланты'), perkTabs.el, perkList]);
+  // mobile: abilities and perks are two sections of a side rail
+  const rail = sections({ items: [
+    { id: 'abilities', label: 'Умения', icon: 'skills', nodes: [leftPane] },
+    { id: 'perks', label: 'Таланты', icon: 'star', nodes: [rightPane] },
+  ] });
   return {
-    el: el('div.skl-view', null, [
-      el('div.skl-left', null, [head, sectionTitle('Боевые умения'), cards]),
-      el('div.skl-right', null, [sectionTitle('Таланты'), perkTabs.el, perkList]),
-    ]),
+    el: el('div.skl-view', null, [rail.el, leftPane, rightPane]),
     onOpen() {
       watch.start();
       refresh();
     },
     onClose: () => watch.stop(),
-    hints: () => [{ key: 'character', label: 'Персонаж', onClick: () => ui.open('character') }],
+    hints: () => [{ key: 'character', label: 'Персонаж', touch: false, onClick: () => ui.open('character') }],
   };
 }

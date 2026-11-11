@@ -1,5 +1,29 @@
 // Kit foundation: DOM builder, shared context, cursor tooltip and modal dialogs.
 // Everything here is re-exported by kit.js — import from './kit.js' in screens.
+import { isTouch, isCompact } from './device.js';
+
+export { isTouch };
+
+/**
+ * True when the menus use the mobile layout: a touch device or a compact viewport.
+ * Mirrors the `m-ui` class that ui.js keeps on <html> (all mobile rules live in styles/mobile.css).
+ */
+export const isMobileUi = () => isTouch() || isCompact();
+
+/**
+ * «Back» inside a screen on mobile: clicks the visible `.m-back` button (list → detail navigation of
+ * listDetail, the deal card of the shop). Returns true when one was found — Esc then stays on the screen.
+ */
+export function dismissMobileBack() {
+  if (!isMobileUi()) return false;
+  for (const node of document.querySelectorAll('.m-back')) {
+    if (node.offsetParent !== null && !node.disabled) {
+      node.click();
+      return true;
+    }
+  }
+  return false;
+}
 
 const context = {
   root: null,
@@ -164,25 +188,111 @@ export const tooltip = {
     if (tipNode) tipNode.hidden = true;
     tipOwner = null;
   },
+  /** Show `content` next to an element (touch: there is no cursor to follow). */
+  showAt(target, content) {
+    const rect = target.getBoundingClientRect();
+    tooltip.show(content, rect.left + rect.width / 2, rect.top + rect.height / 2);
+    if (!tipNode || tipNode.hidden) return;
+    // keep the finger and the element itself uncovered: above the element when there is room, else below
+    const margin = 8;
+    const w = tipNode.offsetWidth;
+    const h = tipNode.offsetHeight;
+    let left = rect.left + rect.width / 2 - w / 2;
+    let top = rect.top - margin - h;
+    if (top < margin) top = rect.bottom + margin;
+    if (top + h > window.innerHeight - margin) {
+      top = Math.max(margin, Math.min(rect.top, window.innerHeight - margin - h));
+      left = rect.right + margin + w <= window.innerWidth - margin ? rect.right + margin : rect.left - margin - w;
+    }
+    left = Math.max(margin, Math.min(left, window.innerWidth - margin - w));
+    top = Math.max(margin, Math.min(top, window.innerHeight - margin - h));
+    tipNode.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`;
+  },
   /**
-   * Show a tooltip while the pointer is over `target`.
+   * Show a tooltip while the mouse is over `target`. With a finger: a tap opens it (tap elsewhere closes);
+   * when the target already does something on tap (buttons, rows, clickable slots, map markers) the
+   * tooltip opens on a long press instead and that press does not trigger the action.
    * @param {HTMLElement} target
    * @param {string|Node|(() => string|Node|null)} content  a function is evaluated on every hover
    */
   attach(target, content) {
-    target.addEventListener('mouseenter', event => {
-      const value = typeof content === 'function' ? content() : content;
+    const value = () => (typeof content === 'function' ? content() : content);
+    const open = () => {
+      tooltip.showAt(target, value());
       tipOwner = target;
-      tooltip.show(value, event.clientX, event.clientY);
+    };
+    let pressTimer = 0;
+    let pressX = 0;
+    let pressY = 0;
+    let lastTouch = 0;
+    const cancelPress = () => {
+      clearTimeout(pressTimer);
+      pressTimer = 0;
+    };
+    target.addEventListener('pointerenter', event => {
+      if (event.pointerType === 'touch') return;
+      tooltip.show(value(), event.clientX, event.clientY);
       tipOwner = target;
     });
-    target.addEventListener('mousemove', event => tooltip.move(event.clientX, event.clientY));
-    target.addEventListener('mouseleave', () => {
-      if (tipOwner === target) tooltip.hide();
+    target.addEventListener('pointermove', event => {
+      if (event.pointerType !== 'touch') {
+        tooltip.move(event.clientX, event.clientY);
+        return;
+      }
+      if (pressTimer && Math.abs(event.clientX - pressX) + Math.abs(event.clientY - pressY) > 12) cancelPress();
+    });
+    target.addEventListener('pointerleave', event => {
+      if (event.pointerType === 'touch') cancelPress();
+      else if (tipOwner === target) tooltip.hide();
+    });
+    target.addEventListener('pointerdown', event => {
+      if (event.pointerType !== 'touch') return;
+      lastTouch = event.timeStamp;
+      pressX = event.clientX;
+      pressY = event.clientY;
+      cancelPress();
+      pressTimer = setTimeout(() => {
+        pressTimer = 0;
+        open();
+        swallowNextClick(target);
+      }, LONG_PRESS_MS);
+    });
+    target.addEventListener('pointerup', cancelPress);
+    target.addEventListener('pointercancel', cancelPress);
+    target.addEventListener('click', event => {
+      // a tap on something without its own action toggles the tooltip
+      if (event.timeStamp - lastTouch > 700 || hasTapAction(target)) return;
+      if (tipOwner === target && tipNode && !tipNode.hidden) tooltip.hide();
+      else open();
     });
     return target;
   },
 };
+
+const LONG_PRESS_MS = 450;
+const TAP_ACTION = 'button, a, input, select, .clickable, .kit-row, .map-marker, [data-tap]';
+const hasTapAction = target => target.matches(TAP_ACTION);
+
+/** After a long press the finger still produces a click — eat it so the press only shows the tooltip. */
+function swallowNextClick(target) {
+  const stop = event => {
+    event.stopPropagation();
+    event.preventDefault();
+  };
+  target.addEventListener('click', stop, { capture: true, once: true });
+  setTimeout(() => target.removeEventListener('click', stop, { capture: true }), 1200);
+}
+
+// touch: a tap anywhere else (or scrolling) closes the tooltip
+if (typeof document !== 'undefined') {
+  document.addEventListener('pointerdown', event => {
+    if (event.pointerType !== 'touch' || !tipOwner || !tipNode || tipNode.hidden) return;
+    if (!tipOwner.contains(event.target)) tooltip.hide();
+  }, true);
+  document.addEventListener('scroll', () => {
+    if (tipOwner && isTouch()) tooltip.hide();
+  }, true);
+}
 
 // ───────────────────────── modal ─────────────────────────
 

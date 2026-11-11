@@ -1,0 +1,74 @@
+/* Touch devices: on-screen controls and the in-game HUD laid out for a phone held in landscape.
+   Everything here is scoped to html.is-touch, so the desktop HUD is untouched. */
+
+html.is-touch, html.is-touch body { touch-action: none; overscroll-behavior: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+html.is-touch #game { touch-action: none; }
+
+/* comfortable fixed size: a phone in landscape is only ~360–430 px tall */
+html.is-touch .hud-layer, html.is-touch .toast-layer { font-size: calc(clamp(13px, 3.7vh, 17px) * var(--hud-scale)); }
+html.is-touch .hud-layer { padding: 0; }
+
+/* —— stick and look surface —— */
+.touch-surface { inset: 0; touch-action: none; }
+.touch-stick { position: absolute; width: 0; height: 0; opacity: 0; transition: opacity 0.12s; pointer-events: none; }
+.touch-stick.show { opacity: 1; }
+.touch-stick::before { content: ''; position: absolute; left: -62px; top: -62px; width: 124px; height: 124px; border-radius: 50%; border: 1px solid rgba(232, 223, 200, 0.35); background: radial-gradient(circle, rgba(8, 10, 9, 0.18), rgba(8, 10, 9, 0.42)); }
+.touch-stick.sprint::before { border-color: var(--gold-bright); box-shadow: 0 0 14px rgba(236, 208, 140, 0.35); }
+.touch-stick-knob { position: absolute; left: -26px; top: -26px; width: 52px; height: 52px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, rgba(236, 208, 140, 0.75), rgba(200, 164, 90, 0.4)); border: 1px solid rgba(236, 208, 140, 0.8); will-change: transform; }
+
+/* —— buttons —— */
+.touch-btn { position: absolute; display: grid; place-items: center; border-radius: 50%; color: var(--text); background: radial-gradient(circle at 40% 30%, rgba(40, 43, 40, 0.72), rgba(8, 10, 9, 0.72)); border: 1px solid rgba(232, 223, 200, 0.34); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45); touch-action: none; transition: transform 0.06s, background 0.1s, border-color 0.1s; }
+.touch-btn .ico { width: 46%; height: 46%; }
+.touch-btn.down { transform: scale(0.92); border-color: var(--gold-bright); background: radial-gradient(circle at 40% 30%, rgba(120, 96, 48, 0.8), rgba(40, 30, 12, 0.8)); color: var(--gold-bright); }
+
+.touch-pad { right: 0; bottom: 0; width: 15em; height: 13em; padding-right: env(safe-area-inset-right); padding-bottom: env(safe-area-inset-bottom); pointer-events: none; }
+.touch-pad .touch-btn { pointer-events: auto; }
+.touch-btn.tb-attack { right: calc(1em + env(safe-area-inset-right)); bottom: calc(1em + env(safe-area-inset-bottom)); width: 5.4em; height: 5.4em; border-color: rgba(236, 208, 140, 0.6); color: var(--gold-bright); }
+.touch-btn.tb-dodge { right: calc(7.2em + env(safe-area-inset-right)); bottom: calc(0.8em + env(safe-area-inset-bottom)); width: 3.7em; height: 3.7em; }
+.touch-btn.tb-jump { right: calc(1.3em + env(safe-area-inset-right)); bottom: calc(7.3em + env(safe-area-inset-bottom)); width: 3.7em; height: 3.7em; }
+.touch-btn.tb-target { right: calc(6.2em + env(safe-area-inset-right)); bottom: calc(5.3em + env(safe-area-inset-bottom)); width: 3.3em; height: 3.3em; }
+.touch-btn.tb-heal { right: calc(11.3em + env(safe-area-inset-right)); bottom: calc(1em + env(safe-area-inset-bottom)); width: 3.3em; height: 3.3em; color: #e58a78; }
+.touch-btn.tb-mount { right: calc(10.3em + env(safe-area-inset-right)); bottom: calc(5.2em + env(safe-area-inset-bottom)); width: 3em; height: 3em; }
+.touch-btn.tb-menu { right: calc(0.7em + env(safe-area-inset-right)); top: calc(0.6em + env(safe-area-inset-top)); width: 3.1em; height: 3.1em; border-radius: 0.5em; }
+
+/* —— HUD rearranged for thumbs —— */
+html.is-touch .vitals { left: calc(1em + env(safe-area-inset-left)); top: calc(0.9em + env(safe-area-inset-top)); bottom: auto; transform: none; align-items: flex-start; }
+html.is-touch .vital.health .vital-track { width: 13em; height: 0.9em; }
+html.is-touch .vital.stamina .vital-track { width: 10em; height: 0.5em; }
+html.is-touch .vital-cap { display: none; }
+html.is-touch .vital .vital-num { opacity: 1; }
+html.is-touch .vital.stamina .vital-num { display: none; }
+
+html.is-touch .compass { width: 19em; }
+html.is-touch .compass-row > :not(.compass) { display: none; }   /* clock and purse live in the menu on phones */
+html.is-touch .target { top: 4.9em; }
+
+html.is-touch .hotbar { bottom: calc(0.7em + env(safe-area-inset-bottom)); gap: 0; }
+html.is-touch .hotbar .level-badge { display: none; }
+html.is-touch .hotbar-group { gap: 0.45em; }
+html.is-touch .slot { width: 3.45em; height: 3.45em; border-radius: 0.35em; touch-action: none; }
+html.is-touch .slot.quick { width: 3em; height: 3em; }
+html.is-touch .slot-key { display: none; }
+html.is-touch .hotbar-quick-touch { right: calc(4.6em + env(safe-area-inset-right)); top: calc(0.65em + env(safe-area-inset-top)); display: flex; gap: 0.4em; }
+html.is-touch .slot.quick.empty { opacity: 0.45; }
+
+html.is-touch .prompt-zone { bottom: calc(5.4em + env(safe-area-inset-bottom)); }
+html.is-touch .prompt { pointer-events: none; }
+html.is-touch .prompt.show { pointer-events: auto; padding: 0.55em 1.2em 0.6em; min-height: 3em; justify-content: center; background: rgba(8, 10, 9, 0.78); border: 1px solid var(--gold-dim); border-radius: 1.6em; }
+html.is-touch .prompt.show:active { border-color: var(--gold-bright); background: rgba(60, 46, 20, 0.85); }
+html.is-touch .prompt-key { display: none; }
+html.is-touch .prompt-main::before { content: ''; width: 0.6em; height: 0.6em; margin-right: 0.6em; transform: rotate(45deg); background: var(--gold-bright); flex: none; }
+html.is-touch .prompt-main { display: flex; align-items: center; }
+
+html.is-touch .toasts { left: calc(1em + env(safe-area-inset-left)); top: 4.6em; bottom: auto; max-width: 20em; flex-direction: column-reverse; }
+html.is-touch .loot-feed { left: calc(1em + env(safe-area-inset-left)); right: auto; top: 9.6em; bottom: auto; align-items: flex-start; }
+html.is-touch .trackers, html.is-touch .quest-tracker, html.is-touch .caravan-tracker { font-size: 0.9em; }
+
+/* nothing of the HUD may sit under the system gesture bars */
+html.is-touch .hud-layer > .touch-surface { left: 0; top: 0; }
+
+/* big centre announcements take less of the short screen */
+html.is-touch.is-compact .zone-banner { top: 16%; width: 36em; }
+html.is-touch.is-compact .banner-title { font-size: 2em; }
+html.is-touch.is-compact .levelup { top: 14%; }
+html.is-touch.is-compact .levelup-number { font-size: 3.6em; }

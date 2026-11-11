@@ -92,6 +92,6 @@ function createResult(g, ui) {
       }
       return false;
     },
-    hints: () => [{ key: 'Enter', label: 'Продолжить', onClick: () => ui.close() }],
+    hints: () => [{ key: 'Enter', label: 'Продолжить', touch: false, onClick: () => ui.close() }],
   };
 }

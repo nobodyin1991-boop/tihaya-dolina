@@ -206,10 +206,10 @@ function createJournal(g, ui) {
     },
     hints() {
       const entry = view.selected;
-      const list = [{ key: '↑↓', label: 'Выбор' }, { key: 'Tab', label: 'Раздел', onClick: () => modeTabs.step(1) }];
+      const list = [{ key: '↑↓', label: 'Выбор' }, { key: 'Tab', label: 'Раздел', touch: false, onClick: () => modeTabs.step(1) }];
       if (entry && !entry.lead && entry.status !== 'done') {
-        if (entry.category === 'main' || entry.category === 'side') list.push({ key: 'T', label: entry.tracked ? 'Не отслеживать' : 'Отслеживать', onClick: () => track(entry) });
-        if (entry.marker) list.push({ key: 'F', label: 'На карте', onClick: () => showOnMap(`quest:${entry.id}`, `quest:${entry.id}`) });
+        if (entry.category === 'main' || entry.category === 'side') list.push({ key: 'T', label: entry.tracked ? 'Не отслеживать' : 'Отслеживать', touch: false, onClick: () => track(entry) });
+        if (entry.marker) list.push({ key: 'F', label: 'На карте', touch: false, onClick: () => showOnMap(`quest:${entry.id}`, `quest:${entry.id}`) });
       }
       return list;
     },

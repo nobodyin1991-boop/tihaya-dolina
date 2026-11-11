@@ -1,6 +1,7 @@
 // HUD: interaction prompt and channel bar (lower centre).
 // Consumes: g.prompt {key, text, sub?}, g.interaction.channel {text, progress}.
 import { el, setText, setClass } from '../kit.js';
+import { isTouch } from '../device.js';
 
 export function createPrompt(g, ui, layer) {
   const key = el('span.key.prompt-key');
@@ -11,6 +12,16 @@ export function createPrompt(g, ui, layer) {
   const channelFill = el('i.channel-fill');
   const channel = el('div.channel', null, [channelText, el('div.channel-track', null, channelFill)]);
   layer.append(el('div.prompt-zone', null, [channel, prompt]));
+  // on touch screens the prompt itself is the «E» button
+  if (isTouch()) {
+    prompt.classList.add('interactive');
+    prompt.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      g.input.virtualPress('interact');
+      g.input.virtualRelease('interact');
+    });
+  }
 
   let lastProgress = -1;
 

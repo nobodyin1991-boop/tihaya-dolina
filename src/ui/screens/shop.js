@@ -11,7 +11,9 @@ import {
 import { roomFor, usedSlots, totalSlots } from '../../sim/inventory.js';
 import { repRank } from '../../sim/reputation.js';
 import { icon } from '../icons.js';
-import { el, clear, sectionTitle, button, coins, numberStepper, tag, tabs, listRow, itemTooltip, rarityColor, formatNumber } from '../kit.js';
+import {
+  el, clear, sectionTitle, button, coins, numberStepper, tag, tabs, sections, listRow, itemTooltip, rarityColor, formatNumber, isMobileUi,
+} from '../kit.js';
 import { act, live, safe, render, note, itemCard, pageHead, fact, cityName, currentCityKey, percent, pips, STATE_EVENTS } from '../screen-kit.js';
 
 const isFood = def => def.cooldownGroup === 'food' || def.cat === 'food' || def.cat === 'meal';
@@ -30,6 +32,7 @@ function createShop(g, ui, isTrade) {
   let selectedId = null;
   let quantity = 1;
   let page = 'deal';           // trade only: deal | market
+  let dealOpen = false;        // mobile: the deal card is shown instead of the list (master → detail)
   const state = () => g.state;
 
   const head = el('div.shp-head');
@@ -37,11 +40,9 @@ function createShop(g, ui, isTrade) {
   const bagList = el('div.shp-list.kit-scroll.interactive');
   const deal = el('div.shp-deal.kit-scroll.interactive');
   const market = el('div.shp-market.kit-scroll.interactive');
-  const columns = el('div.shp-columns', null, [
-    el('div.shp-pane', null, [sectionTitle('Товар торговца'), stockList]),
-    deal,
-    el('div.shp-pane', null, [sectionTitle('Ваша сумка', 'что купят'), bagList]),
-  ]);
+  const stockPane = el('div.shp-pane', null, [sectionTitle('Товар торговца'), stockList]);
+  const bagPane = el('div.shp-pane', null, [sectionTitle('Ваша сумка', 'что купят'), bagList]);
+  const columns = el('div.shp-columns', null, [stockPane, deal, bagPane]);
   const pageTabs = isTrade ? tabs({
     tabs: [{ id: 'deal', label: 'Торг' }, { id: 'market', label: 'Цены трёх городов' }],
     onChange: id => {
@@ -50,6 +51,32 @@ function createShop(g, ui, isTrade) {
     },
   }) : null;
   const body = el('div.shp-body');
+  // mobile: buying and selling are two sections of a side rail (plus the price table on the trade screen);
+  // a tap on a row opens the deal card full-width with a «Назад» bar
+  const rail = sections({
+    items: [
+      { id: 'buy', label: 'Купить', icon: 'coin', nodes: [stockPane] },
+      { id: 'sell', label: 'Продать', icon: 'inventory', nodes: [bagPane] },
+      ...(isTrade ? [{ id: 'market', label: 'Цены', icon: 'city', nodes: [] }] : []),
+    ],
+    onChange: id => {
+      dealOpen = false;
+      if (id === 'market') {
+        pageTabs.set('market');
+        return;
+      }
+      side = id;
+      selectedId = null;
+      quantity = 1;
+      if (page === 'market') pageTabs.set('deal');
+      else refresh();
+    },
+  });
+
+  function closeDeal() {
+    dealOpen = false;
+    columns.classList.remove('m-deal');
+  }
 
   function stock() {
     const rows = safe(() => shopStock(state(), cityKey, role), []) || [];
@@ -64,10 +91,11 @@ function createShop(g, ui, isTrade) {
       .sort((a, b) => b.price * b.count - a.price * a.count);
   }
 
-  function select(nextSide, itemId) {
+  function select(nextSide, itemId, tapped) {
     side = nextSide;
     selectedId = itemId;
     quantity = 1;
+    if (tapped && isMobileUi()) dealOpen = true;
     refresh();
   }
 
@@ -88,7 +116,7 @@ function createShop(g, ui, isTrade) {
     return rows.map(row => {
       const def = itemDef(row.itemId);
       const trend = trendTag(row.itemId);
-      const node = el('div.kit-row.shp-row', { class: `${side === 'buy' && selectedId === row.itemId ? 'selected' : ''} ${row.locked ? 'locked' : ''}`, onClick: () => select('buy', row.itemId), onDblclick: () => buy(row.itemId, 1) },
+      const node = el('div.kit-row.shp-row', { class: `${side === 'buy' && selectedId === row.itemId ? 'selected' : ''} ${row.locked ? 'locked' : ''}`, onClick: () => select('buy', row.itemId, true), onDblclick: () => buy(row.itemId, 1) },
         listRow({
           icon: row.locked ? 'lock' : def.icon, label: def.name, rarity: def.rarity, dim: !!row.locked || row.stock <= 0,
           sub: row.locked || (row.stock > 0 ? `в наличии ${row.stock}` : 'раскуплено'),
@@ -105,7 +133,7 @@ function createShop(g, ui, isTrade) {
     if (!rows.length) return el('div.chr-none', { text: 'В сумке нет ничего на продажу.' });
     return rows.map(row => {
       const def = itemDef(row.itemId);
-      const node = el('div.kit-row.shp-row', { class: side === 'sell' && selectedId === row.itemId ? 'selected' : '', onClick: () => select('sell', row.itemId), onDblclick: () => sell(row.itemId, 1) },
+      const node = el('div.kit-row.shp-row', { class: side === 'sell' && selectedId === row.itemId ? 'selected' : '', onClick: () => select('sell', row.itemId, true), onDblclick: () => sell(row.itemId, 1) },
         listRow({ icon: def.icon, label: def.name, rarity: def.rarity, sub: `×${row.count}`, right: coins(row.price) }));
       ui.tooltip.attach(node, () => itemTooltip(row.itemId));
       return node;
@@ -146,12 +174,14 @@ function createShop(g, ui, isTrade) {
     const row = rows.find(entry => entry.itemId === selectedId);
     if (!row) return el('div.kit-empty', null, [el('i.kit-empty-diamond'), el('div.kit-empty-text', { text: 'Выберите товар слева, чтобы купить, или вещь из сумки справа, чтобы продать' })]);
     const def = itemDef(row.itemId);
-    const blocks = [itemCard(st, row.itemId, { compare: buying })];
-    blocks.push(sectionTitle('Цены по городам'), cityPrices(row.itemId));
-    if (buying && row.locked) {
-      blocks.push(note(row.locked, 'lock', 'warn'));
-      return blocks;
-    }
+    const backBar = el('div.kit-detail-bar', null, [
+      el('button.kit-detail-back.m-back', { type: 'button', onClick: closeDeal }, [icon('chevron-left'), el('span', { text: 'Назад' })]),
+      el('span.kit-detail-backtitle', { text: buying ? 'Покупка' : 'Продажа' }),
+    ]);
+    // two groups (plain flow on desktop, two columns on mobile so the buy / sell controls need no scrolling)
+    const info = el('div.shp-deal-info', null, [itemCard(st, row.itemId, { compare: buying }), sectionTitle('Цены по городам'), cityPrices(row.itemId)]);
+    if (buying && row.locked) return [backBar, info, el('div.shp-deal-trade', null, note(row.locked, 'lock', 'warn'))];
+    const blocks = [];
     const limit = buying
       ? Math.max(0, Math.min(row.stock, roomFor(st, row.itemId)))
       : row.count;
@@ -178,7 +208,7 @@ function createShop(g, ui, isTrade) {
       totalNode,
       el('div.shp-hint', { text: buying ? 'Каждая следующая штука дороже: полки пустеют.' : `Каждая следующая штука дешевле: рынок насыщается. ${def.type === 'trade' ? 'Торговые товары выгоднее везти в другой город.' : ''}` }),
     );
-    return blocks;
+    return [backBar, info, el('div.shp-deal-trade', null, blocks)];
   }
 
   // ───────────── trade: the three-city table ─────────────
@@ -253,6 +283,7 @@ function createShop(g, ui, isTrade) {
       const bagRows = bag();
       const pool = side === 'buy' ? stockRows : bagRows;
       if (!pool.some(row => row.itemId === selectedId)) {
+        dealOpen = false;
         if (pool.length) selectedId = pool[0].itemId;
         else if (side === 'sell' && stockRows.length) {
           side = 'buy';
@@ -266,6 +297,8 @@ function createShop(g, ui, isTrade) {
       bagList.scrollTop = tops[1];
       render(deal, renderDeal);
     }
+    columns.classList.toggle('m-deal', dealOpen);
+    rail.set(isTrade && page === 'market' ? 'market' : side, true);
     ui.refreshHints();
   }
 
@@ -294,7 +327,7 @@ function createShop(g, ui, isTrade) {
 
   const watch = live(STATE_EVENTS, refresh);
   return {
-    el: el('div.shp-view', null, [head, pageTabs ? pageTabs.el : null, body]),
+    el: el('div.shp-view', null, [head, pageTabs ? pageTabs.el : null, el('div.shp-main', null, [rail.el, body])]),
     onOpen(params = {}) {
       cityKey = (params && params.cityKey) || currentCityKey(g) || 'valley';
       role = isTrade ? 'trader' : (params && params.role) || 'grocer';
@@ -303,6 +336,7 @@ function createShop(g, ui, isTrade) {
       side = 'buy';
       selectedId = null;
       quantity = 1;
+      dealOpen = false;
       watch.start();
       refresh();
     },
@@ -324,10 +358,10 @@ function createShop(g, ui, isTrade) {
     },
     hints() {
       const list = [];
-      if (isTrade) list.push({ key: 'R', label: page === 'market' ? 'К торгу' : 'Цены трёх городов', onClick: () => pageTabs.step(1) });
+      if (isTrade) list.push({ key: 'R', label: page === 'market' ? 'К торгу' : 'Цены трёх городов', touch: false, onClick: () => pageTabs.step(1) });
       if (page === 'market') return list;
-      list.push({ key: '↑↓', label: 'Товар' }, { key: 'Tab', label: side === 'buy' ? 'К сумке' : 'К прилавку', onClick: switchSide });
-      if (selectedId) list.push({ key: 'E', label: side === 'buy' ? 'Купить' : 'Продать', onClick: confirmDeal });
+      list.push({ key: '↑↓', label: 'Товар' }, { key: 'Tab', label: side === 'buy' ? 'К сумке' : 'К прилавку', touch: false, onClick: switchSide });
+      if (selectedId) list.push({ key: 'E', label: side === 'buy' ? 'Купить' : 'Продать', touch: false, onClick: confirmDeal });
       return list;
     },
   };

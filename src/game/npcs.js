@@ -10,12 +10,13 @@ import { createNpc } from '../entities/npc-models.js';
 import { walkHeightAt } from '../world/terrain.js';
 import { turnToward } from './units.js';
 
-const VISIBLE_RADIUS = 95;
-const MAX_VISIBLE = 26;
-const CITIZENS_PER_CITY = 14;
+let VISIBLE_RADIUS = 95;
+let MAX_VISIBLE = 26;
+let CITIZENS_PER_CITY = 14;
 const WALK_SPEED = 1.35;
 
 export function createNpcs(g) {
+  if (g.settings.quality === 'mobile') { VISIBLE_RADIUS = 55; MAX_VISIBLE = 12; CITIZENS_PER_CITY = 8; }
   const npcs = [];
   const graphs = new Map();   // cityKey -> {nodes, adj}
 

@@ -92,6 +92,6 @@ function createBoard(g, ui, kind) {
       refresh();
     },
     onClose: () => watch.stop(),
-    hints: () => [{ key: 'journal', label: 'Журнал', onClick: () => ui.open('journal') }],
+    hints: () => [{ key: 'journal', label: 'Журнал', touch: false, onClick: () => ui.open('journal') }],
   };
 }

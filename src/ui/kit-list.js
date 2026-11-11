@@ -1,6 +1,6 @@
 // Kit: the list-left / detail-right layout and tab strips. Re-exported by kit.js.
 import { icon } from './icons.js';
-import { el, clear } from './kit-base.js';
+import { el, clear, isMobileUi } from './kit-base.js';
 
 /**
  * Standard content of a list row: icon, label (+ sub line) and a right-aligned value.
@@ -35,10 +35,17 @@ export function tabs(opts) {
   function paint() {
     for (const child of node.children) child.classList.toggle('active', child.dataset.id === String(api.active));
   }
+  /** On mobile the strip scrolls sideways: bring the active tab into view. */
+  function reveal() {
+    const child = [...node.children].find(c => c.dataset.id === String(api.active));
+    if (!child || node.scrollWidth <= node.clientWidth) return;
+    node.scrollLeft = child.offsetLeft - (node.clientWidth - child.offsetWidth) / 2;
+  }
   function set(id, silent) {
     if (api.active === id) return;
     api.active = id;
     paint();
+    reveal();
     if (!silent && opts.onChange) opts.onChange(id);
   }
   function step(dir) {
@@ -73,8 +80,67 @@ export function tabs(opts) {
 }
 
 /**
+ * Section switcher for the mobile layout: a column of big buttons (a «rail») that shows one group of
+ * nodes at a time. On desktop the rail is hidden and every node stays visible, so a screen keeps its
+ * multi-column layout there and only gains this element in the DOM.
+ * Inactive nodes get the class `m-off` (hidden only under `html.m-ui`, see styles/mobile.css).
+ *
+ * @param {object} opts
+ * @param {Array<{id: string, label: string, icon?: string, nodes: Array<Element|null>, badge?: string|number}>} opts.items
+ * @param {string} [opts.active]            initial section (default: the first one)
+ * @param {(id: string) => void} [opts.onChange]
+ * @param {Node} [opts.footer]              extra node pinned under the buttons (an always reachable action)
+ * @returns {{el: HTMLElement, active: string, set: (id: string, silent?: boolean) => void, setBadge: (id: string, text: string|number|null) => void}}
+ * @example const rail = sections({ items: [{ id: 'bag', label: 'Сумка', icon: 'inventory', nodes: [bagEl] }, { id: 'doll', label: 'Снаряжение', nodes: [dollEl] }] });
+ *          view.prepend(rail.el);
+ */
+export function sections(opts) {
+  const node = el('nav.m-rail.interactive');
+  const list = el('div.m-rail-list');
+  const api = { el: node, active: opts.active ?? (opts.items[0] && opts.items[0].id), set, setBadge };
+
+  function paint() {
+    for (const child of list.children) child.classList.toggle('active', child.dataset.id === String(api.active));
+    for (const item of opts.items) {
+      for (const target of item.nodes || []) {
+        if (target) target.classList.toggle('m-off', item.id !== api.active);
+      }
+    }
+  }
+  function set(id, silent) {
+    if (api.active === id || !opts.items.some(item => item.id === id)) return;
+    api.active = id;
+    paint();
+    if (!silent && opts.onChange) opts.onChange(id);
+  }
+  function setBadge(id, text) {
+    const child = [...list.children].find(c => c.dataset.id === String(id));
+    if (!child) return;
+    const badge = child.querySelector('.m-rail-badge');
+    badge.textContent = text === null || text === undefined ? '' : String(text);
+    badge.hidden = badge.textContent === '';
+  }
+
+  for (const item of opts.items) {
+    const empty = item.badge === undefined || item.badge === null || item.badge === '';
+    list.append(el('button.m-rail-btn', { type: 'button', dataset: { id: item.id }, onClick: () => set(item.id) }, [
+      item.icon ? icon(item.icon) : null,
+      el('span.m-rail-label', { text: item.label }),
+      el('span.m-rail-badge.t-num', { text: empty ? '' : String(item.badge), hidden: empty }),
+    ]));
+  }
+  node.append(list);
+  if (opts.footer) node.append(el('div.m-rail-foot', null, opts.footer));
+  paint();
+  return api;
+}
+
+/**
  * The ESO layout: a scrolling list on the left, details of the selected entry on the right.
  * ↑/↓/Home/End move the selection, Enter (or double click) activates, a filter strip narrows the list.
+ * Mobile layout (`html.m-ui`): master → detail navigation. The list takes the whole width; a tap on a row
+ * opens the detail pane full-width under a «‹ Назад» bar (class `show-detail`); Esc / the back button
+ * returns to the list first (kit-base `dismissMobileBack`). The API is the same in both layouts.
  *
  * @param {object} opts
  * @param {Array} opts.items                      entries (any objects)
@@ -120,6 +186,11 @@ export function listDetail(opts) {
     : null;
   const list = el('div.kit-list.kit-scroll.interactive', { tabIndex: 0 });
   const detail = el('div.kit-detail.kit-scroll.interactive');
+  const backTitle = el('span.kit-detail-backtitle');
+  const backBar = el('div.kit-detail-bar.interactive', null, [
+    el('button.kit-detail-back.m-back', { type: 'button', onClick: () => showList() }, [icon('chevron-left'), el('span', { text: 'Назад' })]),
+    backTitle,
+  ]);
   const node = el('div.kit-listdetail', { class: opts.class || '' }, [
     el('div.kit-listdetail-left', null, [
       opts.title ? el('div.kit-list-title', { text: opts.title }) : null,
@@ -127,9 +198,25 @@ export function listDetail(opts) {
       list,
       opts.listFooter || null,
     ]),
+    backBar,
     detail,
   ]);
-  const api = { el: node, list, detail, selected: null, setItems, select, refresh, refreshDetail, setFilter, handleKey, focus: () => list.focus() };
+  const api = {
+    el: node, list, detail, selected: null, setItems, select, refresh, refreshDetail, setFilter, handleKey, focus: () => list.focus(),
+    showList, showDetail,
+  };
+
+  /** Mobile: back from the detail pane to the list. */
+  function showList() {
+    if (!node.classList.contains('show-detail')) return;
+    node.classList.remove('show-detail');
+    const row = selectedKey !== null ? rowNodes.get(selectedKey) : null;
+    if (row) row.scrollIntoView({ block: 'nearest' });
+  }
+  /** Mobile: open the detail pane of the selected entry (no effect on desktop — both panes are visible). */
+  function showDetail() {
+    if (api.selected && isMobileUi()) node.classList.add('show-detail');
+  }
 
   function currentFilter() {
     return opts.filters ? opts.filters.find(f => f.id === filterId) : null;
@@ -142,8 +229,14 @@ export function listDetail(opts) {
       return;
     }
     const content = opts.renderDetail ? opts.renderDetail(entry) : null;
+    const sameEntry = detail.dataset.key === selectedKey && node.classList.contains('show-detail');
+    const keepScroll = sameEntry ? detail.scrollTop : 0;
     clear(detail, typeof content === 'string' ? el('p', { text: content }) : content);
-    detail.scrollTop = 0;
+    detail.dataset.key = selectedKey;
+    detail.scrollTop = keepScroll;
+    const row = rowNodes.get(selectedKey);
+    const label = row ? row.querySelector('.kit-row-label') : null;
+    backTitle.textContent = label ? label.textContent : '';
   }
 
   function applySelection(key, notify, scroll) {
@@ -178,7 +271,10 @@ export function listDetail(opts) {
       const key = keyOf(entry, index);
       const content = opts.renderRow(entry, { selected: key === selectedKey, index });
       const row = el('div.kit-row', { dataset: { key } }, typeof content === 'string' ? el('span.kit-row-label', { text: content }) : content);
-      row.addEventListener('click', () => applySelection(key, true, false));
+      row.addEventListener('click', () => {
+        applySelection(key, true, false);
+        showDetail();
+      });
       row.addEventListener('dblclick', () => {
         if (opts.onActivate) opts.onActivate(entry);
       });
@@ -188,6 +284,7 @@ export function listDetail(opts) {
     const keep = keepSelection && selectedKey !== null && rowNodes.has(selectedKey);
     const key = keep ? selectedKey : visible.length ? keyOf(visible[0], 0) : null;
     const changed = key !== selectedKey;
+    if (!keep) node.classList.remove('show-detail');
     selectedKey = null;
     applySelection(key, changed, false);
   }

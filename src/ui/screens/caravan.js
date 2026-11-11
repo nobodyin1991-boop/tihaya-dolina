@@ -13,7 +13,7 @@ import { sellPrice, buyPrice } from '../../sim/economy.js';
 import { countItem } from '../../sim/inventory.js';
 import { icon } from '../icons.js';
 import {
-  el, sectionTitle, button, bar, coins, tag, progressRing, modal, emptyState, itemTooltip, rarityColor, formatNumber,
+  el, sectionTitle, button, bar, coins, tag, progressRing, modal, emptyState, itemTooltip, rarityColor, formatNumber, sections,
 } from '../kit.js';
 import { act, live, safe, render, note, fact, cityName, currentCityKey, percent, STATE_EVENTS } from '../screen-kit.js';
 import { routeStrip, wagonSection, guardsSection } from './caravan-parts.js';
@@ -32,6 +32,7 @@ function createCaravan(g, ui) {
   const root = el('div.car-view');
   const state = () => g.state;
   let overview = null;
+  let section = null;          // mobile: the section of the side rail that is shown
 
   const inOrigin = () => !!overview && !!overview.leg && currentCityKey(g) === overview.leg.from;
   const inCity = () => !!currentCityKey(g);
@@ -369,6 +370,36 @@ function createCaravan(g, ui) {
 
   // ───────────── assembly ─────────────
 
+  /**
+   * Mobile layout: the panels of the three columns become sections of a side rail (one visible at a time);
+   * on desktop the rail is hidden and nothing changes.
+   */
+  function withRail(columns, items) {
+    if (!items.some(item => item.id === section)) section = items[0].id;
+    const rail = sections({
+      items, active: section,
+      onChange: id => {
+        section = id;
+      },
+    });
+    columns.prepend(rail.el);
+    return columns;
+  }
+
+  /** Mobile: the launch button that is always in reach at the end of the route strip; when blocked it explains why. */
+  function railLaunch() {
+    const canGo = overview.readiness.canLaunch && inOrigin();
+    return el('button.car-launch.car-launch-rail', { type: 'button', class: canGo ? '' : 'blocked', onClick: () => {
+      if (canGo) {
+        launch();
+        return;
+      }
+      ui.toast(overview.readiness.blockers[0] || `Караван ждёт в городе ${overview.leg.fromName}`, 'warn');
+      section = 'ready';
+      refresh();
+    } }, [icon('caravan'), el('span', { text: 'В путь' })]);
+  }
+
   function build() {
     overview = caravanOverview(state());
     if (!overview.leg) {
@@ -383,28 +414,46 @@ function createCaravan(g, ui) {
       ];
     }
     if (overview.run) {
+      const runBox = runPanel();
+      const sideBox = runSide();
+      const wagonBox = wagonSection(g, ui, overview, { enabled: false });
       return [
         header(),
         routeStrip(g, ui, overview),
-        el('div.car-columns.run', null, [
-          el('div.car-col.kit-scroll.interactive', null, runPanel()),
-          el('div.car-col.kit-scroll.interactive', null, runSide()),
-          el('div.car-col.kit-scroll.interactive', null, wagonSection(g, ui, overview, { enabled: false })),
+        withRail(el('div.car-columns.run', null, [
+          el('div.car-col.kit-scroll.interactive', null, runBox),
+          el('div.car-col.kit-scroll.interactive', null, sideBox),
+          el('div.car-col.kit-scroll.interactive', null, wagonBox),
+        ]), [
+          { id: 'run', label: 'Рейс', icon: 'caravan', nodes: [runBox] },
+          { id: 'guards', label: 'Охрана', icon: 'shield', nodes: [sideBox] },
+          { id: 'wagon', label: 'Телега', icon: 'wagon', nodes: [wagonBox] },
         ]),
       ];
     }
     const origin = inOrigin();
+    const manifestBox = manifestPanel();
+    const bonusBox = bonusPanel();
+    const wagonBox = wagonSection(g, ui, overview, { enabled: inCity(), hint: 'Улучшает и чинит телегу конюх — загляните к нему в городе.' });
+    const guardsBox = guardsSection(g, ui, overview, { enabled: origin, hint: `Бойцов нанимает капитан стражи в городе отправления (${overview.leg.fromName}).` });
+    const readyCol = el('div.car-col.car-col-ready', null, readinessPanel());
+    const progress = overview.manifestProgress;
+    const route = routeStrip(g, ui, overview);
+    route.append(railLaunch());
     return [
       header(),
       guildPicker(),
-      routeStrip(g, ui, overview),
-      el('div.car-columns', null, [
-        el('div.car-col.kit-scroll.interactive', null, [manifestPanel(), bonusPanel()]),
-        el('div.car-col.kit-scroll.interactive', null, [
-          wagonSection(g, ui, overview, { enabled: inCity(), hint: 'Улучшает и чинит телегу конюх — загляните к нему в городе.' }),
-          guardsSection(g, ui, overview, { enabled: origin, hint: `Бойцов нанимает капитан стражи в городе отправления (${overview.leg.fromName}).` }),
-        ]),
-        el('div.car-col.car-col-ready', null, readinessPanel()),
+      route,
+      withRail(el('div.car-columns', null, [
+        el('div.car-col.kit-scroll.interactive', null, [manifestBox, bonusBox]),
+        el('div.car-col.kit-scroll.interactive', null, [wagonBox, guardsBox]),
+        readyCol,
+      ]), [
+        { id: 'cargo', label: 'Груз', icon: 'crate', nodes: [manifestBox], badge: `${progress.done}/${progress.total}` },
+        { id: 'wagon', label: 'Телега', icon: 'wagon', nodes: [wagonBox] },
+        { id: 'guards', label: 'Охрана', icon: 'shield', nodes: [guardsBox], badge: `${overview.guards.hired.length}/${overview.guards.limit}` },
+        { id: 'bonus', label: 'Попутный груз', icon: 'coin', nodes: [bonusBox], badge: overview.bonus.used ? `${overview.bonus.used}/${overview.bonus.capacity}` : null },
+        { id: 'ready', label: 'Готовность', icon: 'check', nodes: [readyCol] },
       ]),
     ];
   }
@@ -452,11 +501,11 @@ function createCaravan(g, ui) {
     },
     hints() {
       if (!overview || !overview.leg) return [];
-      if (overview.run) return [{ key: 'map', label: 'Карта', onClick: () => ui.open('map', { focus: 'caravan' }) }];
+      if (overview.run) return [{ key: 'map', label: 'Карта', touch: false, onClick: () => ui.open('map', { focus: 'caravan' }) }];
       return [
-        { key: 'Enter', label: 'Сдать всё', onClick: giveAll },
-        { key: 'G', label: 'Отправить караван', onClick: () => (overview.readiness.canLaunch && inOrigin() ? launch() : ui.toast(overview.readiness.blockers[0] || 'Караван ещё не готов', 'warn')) },
-        { key: 'map', label: 'Карта', onClick: () => ui.open('map', { focus: overview.leg.to }) },
+        { key: 'Enter', label: 'Сдать всё', touch: false, onClick: giveAll },
+        { key: 'G', label: 'Отправить караван', touch: false, onClick: () => (overview.readiness.canLaunch && inOrigin() ? launch() : ui.toast(overview.readiness.blockers[0] || 'Караван ещё не готов', 'warn')) },
+        { key: 'map', label: 'Карта', touch: false, onClick: () => ui.open('map', { focus: overview.leg.to }) },
       ];
     },
   };

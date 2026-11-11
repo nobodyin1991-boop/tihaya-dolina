@@ -32,6 +32,8 @@ export function createInput(canvas, bindings = DEFAULT_BINDINGS) {
   let lookX = 0, lookY = 0, wheel = 0;
   let enabled = false;        // gameplay input enabled (false while a UI screen is open)
   let wantLock = false;
+  let touchMode = false;      // on-screen controls drive the game: no pointer lock, mouse events ignored
+  let stickX = 0, stickZ = 0; // virtual stick, -1..1 (x = strafe right, z = forward)
 
   const fire = (action, pressed) => { for (const h of handlers) h(action, pressed); };
   const locked = () => document.pointerLockElement === canvas;
@@ -64,14 +66,14 @@ export function createInput(canvas, bindings = DEFAULT_BINDINGS) {
   window.addEventListener('blur', () => { for (const a of [...down]) { down.delete(a); fire(a, false); } });
 
   canvas.addEventListener('mousedown', e => {
-    if (!enabled) return;
+    if (!enabled || touchMode) return;
     if (!locked() && wantLock) { requestLock(); }
     press('Mouse' + e.button, e);
   });
-  window.addEventListener('mouseup', e => release('Mouse' + e.button));
+  window.addEventListener('mouseup', e => { if (!touchMode) release('Mouse' + e.button); });
   canvas.addEventListener('contextmenu', e => e.preventDefault());
   window.addEventListener('mousemove', e => {
-    if (!enabled) return;
+    if (!enabled || touchMode) return;
     if (locked() || (e.buttons & 2)) {
       // ignore absurd deltas some drivers produce on lock/unlock
       if (Math.abs(e.movementX) < 400 && Math.abs(e.movementY) < 400) { lookX += e.movementX; lookY += e.movementY; }
@@ -80,6 +82,7 @@ export function createInput(canvas, bindings = DEFAULT_BINDINGS) {
   canvas.addEventListener('wheel', e => { if (enabled) { wheel += Math.sign(e.deltaY); e.preventDefault(); } }, { passive: false });
 
   function requestLock() {
+    if (touchMode) return;
     try { const p = canvas.requestPointerLock?.(); if (p && p.catch) p.catch(() => {}); } catch { /* ignore */ }
   }
   document.addEventListener('pointerlockchange', () => { for (const h of handlers) h('pointerlock', locked()); });
@@ -99,13 +102,36 @@ export function createInput(canvas, bindings = DEFAULT_BINDINGS) {
         if (locked()) document.exitPointerLock();
         for (const a of [...down]) if (!UI_ACTIONS.has(a)) { down.delete(a); fire(a, false); }
         lookX = lookY = wheel = 0;
+        stickX = stickZ = 0;
       }
     },
     /** Temporarily free the cursor without disabling gameplay (Alt held). */
     setCursorFree(free) { wantLock = enabled && !free; if (free) { if (locked()) document.exitPointerLock(); } else if (enabled) requestLock(); },
     get gameplay() { return enabled; },
     get locked() { return locked(); },
-    caption: action => keyCaption((bindings[action] || [])[0]),
+    caption: action => (touchMode ? '' : keyCaption((bindings[action] || [])[0])),
+
+    // —— on-screen (touch) controls ——
+    /** Switch to touch mode: the on-screen controls below replace mouse and pointer lock. */
+    setTouchMode(on) { touchMode = !!on; if (touchMode && locked()) document.exitPointerLock(); },
+    get touchMode() { return touchMode; },
+    /** Virtual stick position, each axis -1..1. */
+    setStick(x, z) { stickX = enabled ? x : 0; stickZ = enabled ? z : 0; },
+    /** Movement axes from keys or the virtual stick: {x: strafe right, z: forward}, each -1..1. */
+    moveAxis(out) {
+      out.x = stickX || ((down.has('right') ? 1 : 0) - (down.has('left') ? 1 : 0));
+      out.z = stickZ || ((down.has('forward') ? 1 : 0) - (down.has('back') ? 1 : 0));
+      return out;
+    },
+    /** Camera drag in pixels and zoom steps coming from touch gestures. */
+    addLook(dx, dy) { if (enabled) { lookX += dx; lookY += dy; } },
+    addZoom(steps) { if (enabled) wheel += steps; },
+    /** Press/release an action from an on-screen button (same rules as a key). */
+    virtualPress(action) {
+      if (!UI_ACTIONS.has(action) && !enabled) return;
+      if (!down.has(action)) { down.add(action); fire(action, true); }
+    },
+    virtualRelease(action) { if (down.delete(action)) fire(action, false); },
   };
 }
 

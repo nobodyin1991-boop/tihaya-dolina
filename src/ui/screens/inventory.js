@@ -10,7 +10,7 @@ import { isUsable, cooldownLeft } from '../../sim/consumables.js';
 import { derivedStats } from '../../sim/stats.js';
 import {
   el, clear, listDetail, listRow, itemSlot, sectionTitle, statRow, button, coins, segmented, numberStepper, modal,
-  tag, ITEM_TYPE_NAMES, SLOT_NAMES,
+  tag, sections, isTouch, ITEM_TYPE_NAMES, SLOT_NAMES,
 } from '../kit.js';
 import { act, live, safe, render, itemCard, gameNow, percent, STATE_EVENTS } from '../screen-kit.js';
 
@@ -172,7 +172,7 @@ function createInventory(g, ui) {
         const mine = ids[slot - 1] === entry.id;
         const other = ids[slot - 1] && !mine ? itemDef(ids[slot - 1]).name : null;
         row.append(button(String(slot), {
-          small: true, primary: mine, title: mine ? 'Снять с быстрого слота' : other ? `Сейчас здесь: ${other}` : `Клавиша ${g.input.caption(`quick${slot}`)}`,
+          small: true, primary: mine, title: mine ? 'Снять с быстрого слота' : other ? `Сейчас здесь: ${other}` : isTouch() ? `Быстрый слот ${slot}` : `Клавиша ${g.input.caption(`quick${slot}`)}`,
           onClick: () => setQuick(entry, slot),
         }));
       }
@@ -189,7 +189,7 @@ function createInventory(g, ui) {
     for (const { slot, itemId } of equipmentList(st)) {
       const node = itemSlot(itemId, 1, {
         placeholder: SLOT_GHOSTS[slot], size: '1em',
-        tooltip: itemId ? [{ text: 'Щелчок — снять в сумку', kind: 'dim' }] : false,
+        tooltip: itemId ? [{ text: isTouch() ? 'Касание — снять в сумку' : 'Щелчок — снять в сумку', kind: 'dim' }] : false,
         onClick: itemId ? () => act(ui, () => unequip(st, slot), 'Снято') : undefined,
       });
       if (!itemId) ui.tooltip.attach(node, `${SLOT_NAMES[slot] || slot}: пусто`);
@@ -228,6 +228,11 @@ function createInventory(g, ui) {
   }
 
   const watch = live(STATE_EVENTS, refresh);
+  // mobile: the bag (list ↔ item card) and the paper-doll with stats are two sections of a side rail
+  const rail = sections({ items: [
+    { id: 'bag', label: 'Сумка', icon: 'inventory', nodes: [view.el] },
+    { id: 'doll', label: 'Снаряжение', icon: 'character', nodes: [doll] },
+  ] });
 
   function onKey(event) {
     if (view.handleKey(event)) return true;
@@ -246,7 +251,7 @@ function createInventory(g, ui) {
   }
 
   return {
-    el: el('div.inv-view', null, [view.el, doll]),
+    el: el('div.inv-view', null, [rail.el, view.el, doll]),
     onOpen() {
       watch.start();
       refresh();
@@ -256,10 +261,10 @@ function createInventory(g, ui) {
     hints() {
       const entry = view.selected;
       const list = [{ key: '↑↓', label: 'Выбор' }];
-      if (entry && equipSlotOf(entry.id)) list.push({ key: 'Enter', label: 'Надеть', onClick: () => primary(entry) });
-      else if (entry && isUsable(entry.id)) list.push({ key: 'Enter', label: 'Использовать', onClick: () => primary(entry) });
+      if (entry && equipSlotOf(entry.id)) list.push({ key: 'Enter', label: 'Надеть', touch: false, onClick: () => primary(entry) });
+      else if (entry && isUsable(entry.id)) list.push({ key: 'Enter', label: 'Использовать', touch: false, onClick: () => primary(entry) });
       if (entry && entry.def.type === 'consumable') list.push({ key: '1–4', label: 'В быстрый слот' });
-      if (entry) list.push({ key: 'X', label: 'Выбросить', onClick: () => drop(entry) });
+      if (entry) list.push({ key: 'X', label: 'Выбросить', touch: false, onClick: () => drop(entry) });
       return list;
     },
   };

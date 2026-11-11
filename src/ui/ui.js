@@ -13,7 +13,8 @@
 import { on } from '../core/events.js';
 import { icon } from './icons.js';
 import { el, clear, setText, tooltip, confirmDialog, setKitContext, keyHint, coins } from './kit.js';
-import { hasModal, dismissTopModal, acceptTopModal } from './kit-base.js';
+import { hasModal, dismissTopModal, acceptTopModal, isTouch, isMobileUi, dismissMobileBack } from './kit-base.js';
+import { watchDevice } from './device.js';
 import { createHud } from './hud/hud.js';
 import { createTitle } from './screens/title.js';
 import { registerSettingsScreen } from './screens/settings.js';
@@ -43,19 +44,46 @@ export function createUI(g, opts = {}) {
   const titleLayer = el('div.title-layer');
   const tabBar = el('div.menu-tabs');
   const headTitle = el('div.menu-headtitle');
-  const menuTop = el('header.menu-top', null, [tabBar, headTitle]);
+  // mobile layout only (hidden on desktop): a visible close button at the right of the tab strip
+  const closeButton = el('button.menu-close', { type: 'button', attrs: { 'aria-label': 'Закрыть' }, onClick: () => close() }, icon('cross'));
+  const menuTop = el('header.menu-top', null, [tabBar, headTitle, closeButton]);
   const menuBody = el('div.menu-body');
   const hintBar = el('div.menu-hints');
   const purse = el('span.menu-purse');
   const clock = el('span.menu-clock');
-  const menuBottom = el('footer.menu-bottom', null, [hintBar, el('div.menu-status', null, [clock, purse])]);
+  const statusBox = el('div.menu-status', null, [clock, purse]);
+  const menuBottom = el('footer.menu-bottom', null, [hintBar, statusBox]);
   const menu = el('div.menu.interactive', { hidden: true }, [el('div.menu-veil'), menuTop, menuBody, menuBottom]);
   const rawLayer = el('div.raw-layer');
   const overlayLayer = el('div.overlay-layer');
   const toastLayer = el('div.toast-layer');
   const kitLayer = el('div.kit-layer');
-  root.append(hudLayer, titleLayer, menu, rawLayer, overlayLayer, toastLayer, kitLayer);
+  // phones are played in landscape: a friendly «rotate the device» cover while held upright (html.is-portrait)
+  const rotateOverlay = el('div.rotate-overlay.interactive', null, [
+    el('div.rotate-glyph', null, [el('i.rotate-phone'), el('i.rotate-arrow')]),
+    el('div.rotate-title', { text: 'Поверните устройство горизонтально' }),
+    el('div.rotate-sub', { text: 'Тихая долина играется в альбомном положении' }),
+  ]);
+  root.append(hudLayer, titleLayer, menu, rawLayer, overlayLayer, toastLayer, kitLayer, rotateOverlay);
   setKitContext({ root: kitLayer, caption: action => g.input.caption(action) });
+
+  // ───────────── device mode ─────────────
+  // `html.m-ui` switches every menu to the mobile layout (styles/mobile.css): touch devices and compact viewports.
+  let mobile = null;
+  function syncDeviceMode() {
+    const next = isMobileUi();
+    if (next === mobile) return;
+    const first = mobile === null;
+    mobile = next;
+    document.documentElement.classList.toggle('m-ui', next);
+    // purse and clock: bottom bar on desktop, right end of the tab strip on mobile
+    if (next) menuTop.insertBefore(statusBox, closeButton);
+    else menuBottom.append(statusBox);
+    if (!first) {
+      renderTabs();
+      renderHints();
+    }
+  }
 
   // ───────────── state ─────────────
   const defs = new Map();
@@ -71,6 +99,10 @@ export function createUI(g, opts = {}) {
   let statusTimer = 0;
   let trackedMarker = null;
   let questProvider = null;
+  watchDevice();
+  syncDeviceMode();
+  window.addEventListener('resize', syncDeviceMode);
+  window.addEventListener('orientationchange', syncDeviceMode);
 
   const ui = {
     g,
@@ -291,38 +323,64 @@ export function createUI(g, opts = {}) {
     const tabs = menuTabs();
     clear(tabBar);
     if (!current || !current.def.tab) return;
-    if (tabs.length > 1) tabBar.append(keyHint('Q'));
+    const keys = !isTouch();
+    let activeNode = null;
+    if (tabs.length > 1 && keys) tabBar.append(keyHint('Q'));
     for (const def of tabs) {
       const node = el('button.menu-tab', { type: 'button', class: def === current.def ? 'active' : '', onClick: () => open(def.id) }, [
         icon(def.tab.icon),
         el('span', { text: def.tab.label || def.title }),
       ]);
-      if (def.action) tooltip.attach(node, `${def.title} — ${g.input.caption(def.action)}`);
+      if (def.action && keys) tooltip.attach(node, `${def.title} — ${g.input.caption(def.action)}`);
+      if (def === current.def) activeNode = node;
       tabBar.append(node);
     }
-    if (tabs.length > 1) tabBar.append(keyHint('E'));
+    if (tabs.length > 1 && keys) tabBar.append(keyHint('E'));
+    // mobile: the strip scrolls sideways — keep the active tab centred
+    if (mobile && activeNode && tabBar.scrollWidth > tabBar.clientWidth) {
+      tabBar.scrollLeft = activeNode.offsetLeft - (tabBar.clientWidth - activeNode.offsetWidth) / 2;
+    }
   }
 
   /**
-   * Contextual key hints of the current screen (bottom bar). Each: {key, label, onClick?} where `key`
+   * Contextual key hints of the current screen (bottom bar). Each: {key, label, onClick?, touch?} where `key`
    * is an input action or a literal caption. The frame always adds «Esc — Закрыть».
+   * On touch devices only hints with an `onClick` are shown, as plain buttons (no key caps); `touch: false`
+   * drops a hint there (when the screen already has a button for it); the bar disappears when it is empty.
    */
   function setHints(hints) {
     extraHints = hints || null;
     renderHints();
   }
 
+  /** Mobile: the page title of a contextual screen (`.gs-head-title`) moves into the frame's title bar. */
+  function syncHeadTitle() {
+    const current = top();
+    if (!current || current.def.tab || current.def.chrome === false) return;
+    const own = mobile ? current.inst.el.querySelector('.gs-head-title') : null;
+    setText(headTitle, (own && own.textContent) || current.def.title || '');
+  }
+
   function renderHints() {
     const current = top();
     clear(hintBar);
     if (!current) return;
+    syncHeadTitle();
     let list = extraHints;
     if (!list) {
       const own = current.inst.hints;
       list = typeof own === 'function' ? own() : own;
     }
-    for (const hint of list || []) hintBar.append(keyHint(hint.key, hint.label, { onClick: hint.onClick }));
-    hintBar.append(keyHint('Esc', stack.length > 1 ? 'Назад' : 'Закрыть', { onClick: close }));
+    if (isTouch()) {
+      for (const hint of list || []) {
+        if (!hint.onClick || !hint.label || hint.touch === false) continue;
+        hintBar.append(el('button.btn.small.menu-hint-btn', { type: 'button', text: hint.label, onClick: hint.onClick }));
+      }
+    } else {
+      for (const hint of list || []) hintBar.append(keyHint(hint.key, hint.label, { onClick: hint.onClick }));
+      hintBar.append(keyHint('Esc', stack.length > 1 ? 'Назад' : 'Закрыть', { onClick: close }));
+    }
+    menu.classList.toggle('no-hints', !hintBar.childNodes.length);
   }
 
   function renderStatus() {
@@ -344,6 +402,7 @@ export function createUI(g, opts = {}) {
 
   function escape() {
     if (dismissTopModal()) return;
+    if (stack.length && dismissMobileBack()) return;
     for (let i = escapeHandlers.length - 1; i >= 0; i--) {
       if (escapeHandlers[i]()) return;
     }

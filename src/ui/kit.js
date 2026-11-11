@@ -7,8 +7,8 @@ import { icon } from './icons.js';
 import { item as itemDef } from '../data/items.js';
 import { el, clear, tooltip, keyCaptionFor, formatNumber } from './kit-base.js';
 
-export { el, clear, setText, setClass, plural, formatNumber, tooltip, modal, confirmDialog, setKitContext } from './kit-base.js';
-export { listDetail, listRow, tabs } from './kit-list.js';
+export { el, clear, setText, setClass, plural, formatNumber, tooltip, modal, confirmDialog, setKitContext, isTouch, isMobileUi } from './kit-base.js';
+export { listDetail, listRow, tabs, sections } from './kit-list.js';
 
 export const RARITY_NAMES = { common: 'Обычное', fine: 'Добротное', rare: 'Редкое', epic: 'Превосходное', legendary: 'Легендарное' };
 export const ITEM_TYPE_NAMES = {

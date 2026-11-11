@@ -8,7 +8,7 @@ import { QUESTS } from '../../data/quests.js';
 import { SHOPS } from '../../data/economy.js';
 import { PROFESSIONS } from '../../data/professions.js';
 import { icon } from '../icons.js';
-import { el, clear, coins, keyHint } from '../kit.js';
+import { el, clear, coins, keyHint, isTouch } from '../kit.js';
 import { safe, rewardLine, cityName, roleOf, currentCityKey } from '../screen-kit.js';
 
 const TYPE_SPEED = 55;   // characters per second
@@ -62,11 +62,15 @@ function createDialogue(g, ui) {
   const nameNode = el('div.dlg-name');
   const titleNode = el('div.dlg-title');
   const textNode = el('p.dlg-text');
-  const moreNode = el('span.dlg-more', null, [keyHint('Пробел'), 'дальше']);
+  const moreNode = el('span.dlg-more', null, isTouch() ? 'Коснитесь, чтобы продолжить' : [keyHint('Пробел'), 'дальше']);
   const resultsNode = el('div.dlg-results');
   const optionsNode = el('div.dlg-options');
   const panel = el('div.dlg-panel.interactive', null, [
-    el('div.dlg-head', null, [el('span.dlg-portrait', null, icon('npc')), el('div', null, [nameNode, titleNode]), el('i.dlg-rule')]),
+    el('div.dlg-head', null, [
+      el('span.dlg-portrait', null, icon('npc')), el('div', null, [nameNode, titleNode]), el('i.dlg-rule'),
+      // mobile only (hidden on desktop, where Esc and the hint row do this)
+      el('button.dlg-leave', { type: 'button', attrs: { 'aria-label': 'Уйти' }, onClick: () => ui.close() }, [icon('cross'), el('span', { text: 'Уйти' })]),
+    ]),
     el('div.dlg-body', null, [el('div.dlg-speech', null, [textNode, moreNode, resultsNode]), optionsNode]),
     el('div.dlg-hints', null, [keyHint('1–9', 'Ответ'), keyHint('↑↓'), keyHint('Enter', 'Выбрать'), keyHint('Esc', 'Уйти', { onClick: () => ui.close() })]),
   ]);
@@ -99,7 +103,9 @@ function createDialogue(g, ui) {
         type: 'button', disabled: !!option.disabled,
         class: `${position === cursor ? 'active' : ''} ${quest ? 'quest' : ''} k-${option.kind}`,
         onClick: () => choose(position),
-        onMouseenter: () => setCursor(position),
+        onPointerenter: event => {
+          if (event.pointerType !== 'touch') setCursor(position);
+        },
       }, [
         el('span.dlg-option-num.t-num', { text: position < 9 ? String(position + 1) : '' }),
         el('span.dlg-option-icon', null, icon(KIND_ICONS[option.kind] || 'speech')),

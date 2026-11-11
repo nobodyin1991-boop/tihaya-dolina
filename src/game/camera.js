@@ -21,7 +21,7 @@ export function createCameraRig(camera, colliders, settings) {
 
   /** Apply mouse look deltas (pixels) and wheel steps. */
   rig.look = function look(dx, dy, wheel) {
-    const sens = 0.0022 * (settings.mouseSensitivity ?? 1);
+    const sens = 0.0022 * (settings.mouseSensitivity ?? 1) * (rig.touch ? 2.1 : 1);
     rig.yaw -= dx * sens;
     rig.pitch = clamp(rig.pitch + dy * sens * (settings.invertY ? -1 : 1), -0.9, 1.35);
     if (wheel) rig.wantDistance = clamp(rig.wantDistance + wheel * 1.1, 2.6, 16);

@@ -1,7 +1,7 @@
 // Title screen (phase 'title', the world orbits behind it) and the new-game flow: name + class picker.
 // Consumes: g.hasSave(), g.continueGame(), g.newGame({name, classId}), g.view.gpuName; optional data/classes.js.
 import { icon } from '../icons.js';
-import { el, clear, button, tag, tooltip, sectionTitle } from '../kit.js';
+import { el, clear, button, tag, tooltip, sectionTitle, isTouch } from '../kit.js';
 
 const GAME_VERSION = '1.0.0';
 const CLASS_ORDER = ['warrior', 'guardian', 'scientist', 'duelist', 'archer', 'medic', 'engineer'];
@@ -129,7 +129,8 @@ export function createTitle(g, ui) {
     renderPicker();
     picker.hidden = false;
     layer.classList.add('picking');
-    if (nameInput) nameInput.focus();
+    // touch: focusing would pop the on-screen keyboard over the class list — the player taps the field instead
+    if (nameInput && !isTouch()) nameInput.focus();
   }
 
   function closePicker() {
@@ -194,7 +195,9 @@ export function createTitle(g, ui) {
         ]),
       ]),
     ]);
-    if (!picker.hidden) nameInput.focus();
+    if (!picker.hidden && !isTouch()) nameInput.focus();
+    const selectedRow = list.querySelector('.selected');
+    if (selectedRow && list.scrollWidth > list.clientWidth) list.scrollLeft = selectedRow.offsetLeft - (list.clientWidth - selectedRow.offsetWidth) / 2;
   }
 
   async function startNewGame() {

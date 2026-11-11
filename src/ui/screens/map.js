@@ -74,9 +74,15 @@ function createMapScreen(g, ui) {
   ]);
   tooltip.attach(controls.lastChild, 'К герою — Пробел');
   const rose = el('div.map-rose', null, [icon('arrow-up'), el('span', { text: 'С' })]);
-  const stage = el('div.map-stage.interactive', null, [canvas, markerLayer, el('i.map-frame'), rose, controls, progress]);
+  // mobile: the side panel is a sheet over the map, opened by this button or by selecting a place
+  const sheetToggle = el('button.map-ctl.map-sheet-toggle', { type: 'button', attrs: { 'aria-label': 'Сведения и обозначения' }, onClick: () => toggleSheet() }, icon('info'));
+  const stage = el('div.map-stage.interactive', null, [canvas, markerLayer, el('i.map-frame'), rose, controls, sheetToggle, progress]);
   const side = el('aside.map-side.kit-scroll.interactive');
   const view = el('div.map-view', null, [stage, side]);
+
+  function toggleSheet(open) {
+    view.classList.toggle('sheet-open', open === undefined ? !view.classList.contains('sheet-open') : open);
+  }
 
   const fogSmall = document.createElement('canvas');
   fogSmall.width = FOG_CELLS;
@@ -250,6 +256,7 @@ function createMapScreen(g, ui) {
     const here = (z.city && z.city.name) || (z.region && z.region.name) || '';
     const found = Object.keys(discovered()).length;
     clear(side, [
+      el('button.map-sheet-close.m-back', { type: 'button', attrs: { 'aria-label': 'Свернуть' }, onClick: () => toggleSheet(false) }, icon('cross')),
       el('div.map-side-title', { text: 'Карта мира' }),
       el('div.map-side-here', { text: here ? `Вы находитесь: ${here}` : '' }),
       el('div.kit-orn', null, el('i')),
@@ -263,6 +270,7 @@ function createMapScreen(g, ui) {
     selected = data;
     paintTracked();
     renderSide();
+    toggleSheet(!!data);
     dirty = true;
   }
 
@@ -319,24 +327,65 @@ function createMapScreen(g, ui) {
     const rect = stage.getBoundingClientRect();
     zoomBy(event.deltaY < 0 ? 1 : -1, event.clientX - rect.left, event.clientY - rect.top);
   }, { passive: false });
-  stage.addEventListener('mousedown', event => {
-    if (event.button !== 0 || within(event.target, '.map-controls')) return;
+  // Pointer events serve the mouse and fingers alike: one pointer pans, two fingers pinch through the zoom steps.
+  const pointers = new Map();   // pointerId → {x, y}
+  let pinch = null;             // {dist} — finger spread at the last zoom step
+  const PINCH_STEP = 1.28;
+
+  function pinchState() {
+    const [a, b] = [...pointers.values()];
+    const rect = stage.getBoundingClientRect();
+    return { dist: Math.hypot(a.x - b.x, a.y - b.y) || 1, x: (a.x + b.x) / 2 - rect.left, y: (a.y + b.y) / 2 - rect.top };
+  }
+
+  stage.addEventListener('pointerdown', event => {
+    if ((event.pointerType === 'mouse' && event.button !== 0) || within(event.target, '.map-controls') || within(event.target, '.map-sheet-toggle')) return;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointers.size === 2) {
+      pinch = { dist: pinchState().dist };
+      if (drag) drag.moved = true;
+      return;
+    }
+    if (pointers.size > 2) return;
     drag = { x: event.clientX, y: event.clientY, cx, cz, moved: false };
     stage.classList.add('dragging');
   });
-  window.addEventListener('mousemove', event => {
+  window.addEventListener('pointermove', event => {
+    const point = pointers.get(event.pointerId);
+    if (!point) return;
+    point.x = event.clientX;
+    point.y = event.clientY;
+    if (pinch && pointers.size >= 2) {
+      const now = pinchState();
+      const ratio = now.dist / pinch.dist;
+      if (ratio > PINCH_STEP || ratio < 1 / PINCH_STEP) {
+        zoomBy(ratio > 1 ? 1 : -1, now.x, now.y);
+        pinch.dist = now.dist;
+      }
+      return;
+    }
     if (!drag) return;
     const dx = event.clientX - drag.x;
     const dy = event.clientY - drag.y;
-    if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+    if (Math.abs(dx) + Math.abs(dy) > (event.pointerType === 'mouse' ? 4 : 10)) drag.moved = true;
+    if (!drag.moved && event.pointerType !== 'mouse') return;
     cx = drag.cx - dx / scale;
     cz = drag.cz - dy / scale;
     clampCentre();
     dirty = true;
   });
-  window.addEventListener('mouseup', event => {
+  const release = event => {
+    if (!pointers.delete(event.pointerId)) return;
+    if (pinch) {
+      // a finger of the pinch was lifted: the remaining one keeps panning from where it is
+      pinch = pointers.size >= 2 ? pinch : null;
+      const [rest] = [...pointers.values()];
+      drag = rest ? { x: rest.x, y: rest.y, cx, cz, moved: true } : null;
+      if (!rest) stage.classList.remove('dragging');
+      return;
+    }
     if (!drag) return;
-    const wasClick = !drag.moved;
+    const wasClick = !drag.moved && event.type === 'pointerup';
     drag = null;
     stage.classList.remove('dragging');
     if (!wasClick || within(event.target, '.map-marker') || within(event.target, '.map-controls')) return;
@@ -349,7 +398,9 @@ function createMapScreen(g, ui) {
     }
     const region = regionAt(wx, wz);
     select({ kind: 'region', id: `region:${region.id}`, x: region.x, z: region.z, icon: 'map', name: region.name, ref: region });
-  });
+  };
+  window.addEventListener('pointerup', release);
+  window.addEventListener('pointercancel', release);
 
   // ───────────── drawing ─────────────
   function drawVectors() {
@@ -487,7 +538,7 @@ function createMapScreen(g, ui) {
     hints: () => [
       { key: 'ЛКМ', label: 'Двигать карту' },
       { key: 'Колесо', label: 'Масштаб' },
-      { key: 'Пробел', label: 'К герою', onClick: centreOnPlayer },
+      { key: 'Пробел', label: 'К герою', touch: false, onClick: centreOnPlayer },
       { key: '2×ЛКМ', label: 'Метка на компасе' },
     ],
     onOpen(params) {
@@ -514,6 +565,9 @@ function createMapScreen(g, ui) {
     onClose() {
       isOpen = false;
       drag = null;
+      pinch = null;
+      pointers.clear();
+      toggleSheet(false);
     },
     onKey(event) {
       const step = 140 / scale;

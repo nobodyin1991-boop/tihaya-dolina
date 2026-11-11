@@ -31,6 +31,7 @@ export function createHeroController(g) {
   let statsCache = null, statsT = 0;
   let combatT = 0, lastHitT = -99, respawnT = 0, stepAcc = 0, regenDelay = 0;
   const sideUnits = [];
+  const axis = { x: 0, z: 0 };
 
   const hero = {
     id: newUnitId(), kind: 'hero', team: 'player', name: 'Герой', level: 1,
@@ -365,8 +366,8 @@ export function createHeroController(g) {
     const input = g.input;
     const controlled = isControlled(hero);
     const intent = {
-      mx: controlled ? 0 : (input.isDown('right') ? 1 : 0) - (input.isDown('left') ? 1 : 0),
-      mz: controlled ? 0 : (input.isDown('forward') ? 1 : 0) - (input.isDown('back') ? 1 : 0),
+      mx: controlled ? 0 : input.moveAxis(axis).x,
+      mz: controlled ? 0 : axis.z,
       sprint: input.isDown('sprint'), walk: input.isDown('walk'),
       jump: !controlled && input.isDown('jump'), dodge: !controlled && combat.consumeDodge(),
       camYaw: g.cameraRig.yaw,

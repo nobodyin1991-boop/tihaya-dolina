@@ -177,5 +177,8 @@ button.kit-hint:hover { color: var(--gold-bright); }
 .kit-modal-buttons { display: flex; justify-content: center; gap: 0.9em; }
 .kit-modal-buttons .btn { min-width: 8.5em; }
 
+/* —— mobile-only pieces: hidden here, laid out by styles/mobile.css under `html.m-ui` —— */
+.m-rail, .kit-detail-bar, .menu-close, .car-launch.car-launch-rail, .map-ctl.map-sheet-toggle, .map-sheet-close, .dlg-leave, .rotate-overlay { display: none; }
+
 @keyframes kit-fade { from { opacity: 0; } }
 @keyframes kit-rise { from { opacity: 0; transform: translateY(0.5em); } }

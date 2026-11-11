@@ -3,7 +3,7 @@ import { loadSettings, saveSettings } from './save.js';
 import { emit } from './events.js';
 
 export const DEFAULT_SETTINGS = {
-  quality: 'high',          // low | medium | high | ultra
+  quality: 'high',          // mobile | low | medium | high | ultra
   renderScale: 1,           // 0.5 .. 1.5 of device pixels (further capped by quality)
   vsync: true,
   musicOn: true, musicVolume: 0.3,
@@ -15,8 +15,9 @@ export const DEFAULT_SETTINGS = {
   hudScale: 1,
 };
 
-export function createSettings() {
-  const settings = loadSettings(DEFAULT_SETTINGS);
+/** `overrides` replace defaults for a first launch (e.g. the mobile preset on phones). */
+export function createSettings(overrides = {}) {
+  const settings = loadSettings({ ...DEFAULT_SETTINGS, ...overrides });
   /** Change one setting, persist, notify listeners ('settings:changed' {key, value}). */
   settings.set = function set(key, value) {
     if (settings[key] === value) return;

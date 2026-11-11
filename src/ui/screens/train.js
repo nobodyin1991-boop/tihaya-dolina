@@ -141,7 +141,7 @@ function createTrain(g, ui) {
     hints() {
       const list = [{ key: '↑↓', label: 'Выбор' }];
       const offer = view.selected;
-      if (offer && !offer.known && !offer.locked) list.push({ key: 'E', label: 'Изучить', onClick: () => learn(offer) });
+      if (offer && !offer.known && !offer.locked) list.push({ key: 'E', label: 'Изучить', touch: false, onClick: () => learn(offer) });
       return list;
     },
   };

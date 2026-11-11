@@ -31,6 +31,16 @@
 
 /** @type {Record<'low'|'medium'|'high'|'ultra', QualityPreset>} */
 export const QUALITY = {
+  // phones and tablets: short view distance, no post effects, light vegetation
+  mobile: {
+    name: 'mobile', pixelRatioCap: 1.5, msaa: 0, fxaa: true,
+    viewDistance: 650, terrainDetail: 0.9, terrainMinNode: 64, terrainOctaves: 1,
+    shadowMapSize: 1024, shadowDistance: 32, grassShadows: false,
+    grassRadius: 16, grassDensity: 0.8,
+    treeNear: 28, treeMid: 85, treeDistance: 300, propDensity: 0.3,
+    cloudLayers: 1, ao: false, bloom: false, grade: true,
+    rainCount: 1200, particles: 0.3, waterDetail: 0,
+  },
   low: {
     name: 'low', pixelRatioCap: 1, msaa: 0, fxaa: true,
     viewDistance: 1000, terrainDetail: 1.0, terrainMinNode: 64, terrainOctaves: 1,

@@ -1,5 +1,6 @@
 // Entry point: settings → engine → UI. Any failure on the way shows a readable fatal screen.
 import { createSettings } from './core/settings.js';
+import { watchDevice, isTouch } from './ui/device.js';
 
 function showFatal(title, text, detail) {
   const box = document.createElement('div');
@@ -46,7 +47,8 @@ async function boot() {
     return;
   }
   try {
-    const settings = createSettings();
+    watchDevice();
+    const settings = createSettings(isTouch() ? { quality: 'mobile' } : {});
     const { createGame } = await import('./game/game.js');
     const g = createGame({ canvas, settings });
     const { createUI } = await import('./ui/ui.js');

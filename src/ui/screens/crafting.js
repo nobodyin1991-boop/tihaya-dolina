@@ -250,7 +250,7 @@ function createCrafting(g, ui) {
     hints() {
       if (active === 'gather') return [];
       const list = [{ key: '↑↓', label: 'Рецепт' }];
-      if (view.selected && view.selected.canCraft) list.push({ key: 'Enter', label: 'Изготовить', onClick: () => doCraft(view.selected) });
+      if (view.selected && view.selected.canCraft) list.push({ key: 'Enter', label: 'Изготовить', touch: false, onClick: () => doCraft(view.selected) });
       return list;
     },
   };

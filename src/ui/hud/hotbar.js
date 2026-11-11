@@ -3,6 +3,7 @@
 import { item as itemDef } from '../../data/items.js';
 import { icon, setIcon } from '../icons.js';
 import { el, setText, setClass, itemTooltip } from '../kit.js';
+import { isTouch } from '../device.js';
 
 const ABILITY_COUNT = 5;
 const QUICK_COUNT = 4;
@@ -43,6 +44,12 @@ function flash(slot) {
   slot.el.classList.add('pressed');
 }
 
+function flashNode(node) {
+  node.classList.remove('pressed');
+  void node.offsetWidth;
+  node.classList.add('pressed');
+}
+
 function abilityTip(data) {
   if (!data || !data.abilityId) return null;
   return el('div.slot-tip', null, [
@@ -55,21 +62,31 @@ function abilityTip(data) {
 export function createHotbar(g, ui, layer, badge) {
   const abilities = [];
   const quick = [];
+  const touch = isTouch();
+  /** Fire on finger down: abilities must not wait for the finger to lift. */
+  const onTap = (node, fn) => node.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); flashNode(node); fn(); });
   const abilityBox = el('div.hotbar-group.abilities');
   const quickBox = el('div.hotbar-group.quick');
   for (let i = 1; i <= ABILITY_COUNT; i++) {
     const slot = createSlot('ability', g.input.caption(`ability${i}`));
-    ui.tooltip.attach(slot.el, () => abilityTip(slot.data));
+    if (touch) onTap(slot.el, () => g.heroCtl.useAbility(i));
+    else ui.tooltip.attach(slot.el, () => abilityTip(slot.data));
     abilities.push(slot);
     abilityBox.append(slot.el);
   }
   for (let i = 1; i <= QUICK_COUNT; i++) {
     const slot = createSlot('quick', g.input.caption(`quick${i}`));
-    ui.tooltip.attach(slot.el, () => (slot.itemId ? itemTooltip(slot.itemId) : 'Быстрый слот — назначается в инвентаре'));
+    if (touch) onTap(slot.el, () => { if (slot.itemId) g.heroCtl.useItem(slot.itemId); else ui.toast('Быстрый слот назначается в инвентаре', 'info'); });
+    else ui.tooltip.attach(slot.el, () => (slot.itemId ? itemTooltip(slot.itemId) : 'Быстрый слот — назначается в инвентаре'));
     quick.push(slot);
     quickBox.append(slot.el);
   }
-  layer.append(el('div.hotbar', null, [abilityBox, badge, quickBox]));
+  if (touch) {
+    // on phones the quick items sit in the top-right corner, away from the ability row under the thumb
+    layer.append(el('div.hotbar', null, [abilityBox, badge]), el('div.hotbar-quick-touch', null, [quickBox]));
+  } else {
+    layer.append(el('div.hotbar', null, [abilityBox, badge, quickBox]));
+  }
 
   g.input.onAction((action, pressed) => {
     if (!pressed) return;

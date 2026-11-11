@@ -11,6 +11,8 @@ import { createPrompt } from './prompt.js';
 import { createTrackers } from './trackers.js';
 import { createFeed } from './feed.js';
 import { createOverlays } from './overlays.js';
+import { createTouchControls } from './touch.js';
+import { isTouch } from '../device.js';
 
 export function createHud(g, ui) {
   const layer = ui.layers.hud;
@@ -23,6 +25,7 @@ export function createHud(g, ui) {
   const trackers = createTrackers(g, ui, layer);
   const feed = createFeed(g, ui, layer);
   const overlays = createOverlays(g, ui, layer);
+  const touch = isTouch() ? createTouchControls(g, ui, layer) : null;
 
   const hud = {
     hidden: false,
@@ -65,6 +68,7 @@ export function createHud(g, ui) {
       run('labels', labels, dt);
       run('prompt', prompt, dt);
       run('trackers', trackers, dt);
+      if (touch) run('touch', touch, dt);
     }
     run('overlays', overlays, dt, !covered && phase === 'playing' && vitals.lowHealth());
   });
