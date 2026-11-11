@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Тихая долина — актёры</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; background: #1a2026; overflow: hidden; font: 13px/1.3 system-ui, sans-serif; color: #e8dcc0; }
+  canvas { display: block; }
+  #hud { position: fixed; left: 10px; top: 8px; background: rgba(12, 16, 20, .7); border: 1px solid #6a5a34; padding: 6px 10px; white-space: pre; pointer-events: none; }
+  .label { position: fixed; transform: translate(-50%, 0); background: rgba(12, 16, 20, .6); padding: 1px 6px; border-bottom: 1px solid #c8a45a; font-size: 12px; pointer-events: none; white-space: nowrap; }
+</style>
+<script type="importmap">{"imports":{"three":"/vendor/three.module.js","three/addons/":"/vendor/three-addons/"}}</script>
+</head>
+<body>
+<div id="hud"></div>
+<script type="module">
+import * as THREE from 'three';
+import { shared } from '/src/world/materials.js';
+import { countStats } from '/src/entities/rig.js';
+
+const q = new URLSearchParams(location.search);
+const show = q.get('show') || 'heroes';
+const onlyId = q.get('id');
+const animParam = q.get('anim');
+const speedParam = parseFloat(q.get('speed') || '0');
+const lodParam = parseInt(q.get('lod') || '0', 10);
+const copies = parseInt(q.get('copies') || '1', 10);
+const STANCES = ['idle', 'combat', 'sit', 'sleep', 'work', 'guard', 'lean', 'dead', 'mounted', 'carry'];
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(q.get('night') ? 0x0c1118 : 0x8fa5ad);
+scene.fog = new THREE.Fog(scene.background.getHex(), 30, 90);
+const hemi = new THREE.HemisphereLight(0xbfd4e0, 0x4a4436, q.get('night') ? 0.25 : 1.0);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffe2b0, q.get('night') ? 0.3 : 2.6);
+sun.position.set(6, 11, 8);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -16;
+sun.shadow.camera.right = 16;
+sun.shadow.camera.top = 16;
+sun.shadow.camera.bottom = -16;
+sun.shadow.camera.far = 50;
+sun.shadow.bias = -0.0006;
+sun.shadow.normalBias = 0.03;
+scene.add(sun);
+const rim = new THREE.DirectionalLight(0x7fb0c8, 0.7);
+rim.position.set(-7, 5, -9);
+scene.add(rim);
+const ground = new THREE.Mesh(new THREE.CircleGeometry(60, 48), new THREE.MeshStandardMaterial({ color: 0x66704c, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+const camera = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 0.1, 300);
+const cam = { az: 0.5, el: 0.2, dist: 9, target: new THREE.Vector3(0, 1, 0), spin: q.get('spin') === '0' ? 0 : 0.18 };
+function placeCamera() {
+  camera.position.set(cam.target.x + Math.sin(cam.az) * Math.cos(cam.el) * cam.dist, cam.target.y + Math.sin(cam.el) * cam.dist, cam.target.z + Math.cos(cam.az) * Math.cos(cam.el) * cam.dist);
+  camera.lookAt(cam.target);
+}
+
+const actors = [];   // { actor, name, label, x, z, wagon? }
+const labels = [];
+let fx = null;
+let fxDemo = null;
+
+function addActor(actor, name, opts = {}) {
+  actors.push({ actor, name, ...opts });
+  scene.add(actor.group);
+  const el = document.createElement('div');
+  el.className = 'label';
+  el.textContent = name;
+  document.body.appendChild(el);
+  labels.push(el);
+}
+
+function layout(spacing = 1.9, perRow = 8) {
+  const n = actors.length;
+  const rows = Math.ceil(n / perRow);
+  let maxW = 0;
+  actors.forEach((a, i) => {
+    const row = Math.floor(i / perRow);
+    const inRow = Math.min(perRow, n - row * perRow);
+    const col = i % perRow;
+    const sp = a.spacing || spacing;
+    a.actor.group.position.set((col - (inRow - 1) / 2) * sp, 0, (row - (rows - 1) / 2) * -sp * 1.3);
+    if (copies > 1) a.actor.group.position.set(0, 0, (i - (n - 1) / 2) * sp);
+    maxW = Math.max(maxW, inRow * sp);
+  });
+  cam.dist = Math.max(5, maxW * 1.05 + rows * 2.2);
+  cam.target.set(0, 0.95, 0);
+  cam.el = 0.16 + rows * 0.05;
+}
+
+async function build() {
+  const want = s => show === s || show === 'all';
+  if (want('heroes')) {
+    const { createHero, HERO_CLASSES } = await import('/src/entities/hero-models.js');
+    const tier = parseInt(q.get('tier') || '3', 10);
+    for (const id of HERO_CLASSES) {
+      if (onlyId && onlyId !== id) continue;
+      for (let c = 0; c < copies; c++) addActor(createHero(id, { gear: { tier, weight: q.get('weight') || undefined } }), id);
+    }
+    if (q.get('tiers')) {
+      for (const t of [1, 6]) for (const id of HERO_CLASSES) addActor(createHero(id, { gear: { tier: t } }), id + ' t' + t);
+    }
+  }
+  if (want('npcs')) {
+    const { createNpc, NPC_PREVIEW_ROLES } = await import('/src/entities/npc-models.js');
+    const styles = ['timber', 'stone', 'harbor'];
+    NPC_PREVIEW_ROLES.forEach((role, i) => {
+      if (onlyId && onlyId !== role) return;
+      const cityStyle = q.get('city') || styles[i % 3];
+      addActor(createNpc({ role, cityStyle, seed: 100 + i * 7 + parseInt(q.get('seed') || '0', 10) }), role + ' · ' + cityStyle);
+    });
+  }
+  if (want('bandits') || want('beasts') || want('monsters') || (onlyId && !actors.length)) {
+    const mod = await import('/src/entities/creature-models.js');
+    const groups = { bandits: mod.CREATURE_GROUPS.humanoid, beasts: mod.CREATURE_GROUPS.quadruped, monsters: mod.CREATURE_GROUPS.lizard.concat(mod.CREATURE_GROUPS.spider) };
+    for (const key of Object.keys(groups)) {
+      for (const id of groups[key]) {
+        if (onlyId ? onlyId !== id : !want(key)) continue;
+        for (let c = 0; c < copies; c++) {
+          const a = mod.createCreature(id, { seed: 5, elite: !!q.get('elite') });
+          addActor(a, id + (q.get('elite') ? ' ★' : ''), { spacing: Math.max(1.9, a.radius * 2.6) });
+        }
+      }
+    }
+    if (want('beasts') && !onlyId) {
+      addActor(mod.createHorse({ seed: 3 }), 'horse', { spacing: 3 });
+      try {
+        const { createCompanion } = await import('/src/entities/companion.js');
+        addActor(createCompanion(), 'companion');
+      } catch (e) {
+        window.__dbg.errors.push(String(e));
+      }
+    }
+    if (onlyId === 'horse') addActor(mod.createHorse({ seed: 3 }), 'horse');
+    if (onlyId === 'companion') addActor((await import('/src/entities/companion.js')).createCompanion(), 'companion');
+  }
+  if (want('wagon')) {
+    const { createWagon } = await import('/src/entities/wagon.js');
+    for (const tier of [1, 2, 3]) {
+      if (q.get('tier') && parseInt(q.get('tier'), 10) !== tier) continue;
+      const w = createWagon({ tier, upgrades: tier > 1 ? { sides: tier > 2, lanterns: true, cover: true } : {} });
+      addActor({ group: w.group, wagon: w, height: 2.5, radius: w.radius, update() {}, play() {}, setStance() {}, setLod(l) { w.setLod(l); }, dispose() { w.dispose(); } }, 'wagon t' + tier, { spacing: 5.2 });
+    }
+  }
+  layout(parseFloat(q.get('spacing') || '1.9'), parseInt(q.get('row') || (show === 'npcs' ? '9' : '8'), 10));
+  if (want('fx')) {
+    const { createFx } = await import('/src/entities/fx.js');
+    fx = createFx({ scene, camera });
+    if (show === 'fx') {
+      cam.dist = 11;
+      cam.target.set(0, 1.2, 0);
+    }
+  }
+  if (lodParam) for (const a of actors) a.actor.setLod(lodParam);
+  if (animParam) applyAnim(animParam);
+}
+
+function applyAnim(name) {
+  for (const a of actors) {
+    if (STANCES.includes(name)) a.actor.setStance(name);
+    else a.actor.play(name);
+  }
+}
+
+const CYCLE = ['attack', 'attack2', 'heavy', 'shoot', 'cast', 'block', 'hit', 'dodge', 'gather', 'talk', 'cheer', 'bite', 'howl', 'charge'];
+const state = { time: 0, speed: speedParam, paused: false, cycle: !animParam && !q.get('nocycle'), cycleT: 0, cycleI: 0, damage: parseFloat(q.get('damage') || '0'), cargo: parseFloat(q.get('cargo') || '1'), night: !!q.get('night'), fxT: 0, fxI: 0 };
+const v1 = new THREE.Vector3();
+const v2 = new THREE.Vector3();
+
+function runFxDemo(dt) {
+  state.fxT -= dt;
+  if (state.fxT > 0) return;
+  state.fxT = 0.45;
+  const i = state.fxI++;
+  const x = ((i * 3) % 9) - 4;
+  v1.set(x, 1.1, 0);
+  const col = [0xffd27a, 0xbfe6ff, 0xff8a4a, 0x9fe8a0][i % 4];
+  switch (i % 12) {
+    case 0: fx.slash(v1, 0, { color: col, radius: 1.5, angle: 2.4, duration: 0.3 }); break;
+    case 1: fx.thrust(v1, 0.3, { color: col, length: 2.2 }); break;
+    case 2: fx.impact(v1, { color: col, size: 1 }); fx.sparks(v1); break;
+    case 3: fx.projectile(v2.set(-5, 1.4, 2), v1.set(5, 1.2, 2), { kind: ['arrow', 'bolt', 'dart', 'capsule', 'arc', 'shard'][(i / 12 | 0) % 6], color: col, speed: 16, onHit: p => fx.impact(p, { color: col, size: 0.8 }) }); break;
+    case 4: fx.ring(v1.set(x, 0.05, 0), { color: col, radius: 2.2, duration: 0.7 }); break;
+    case 5: fx.beam(v2.set(x - 1, 1.4, 1), v1.set(x + 2, 1.0, -1), { color: col, duration: 0.35 }); break;
+    case 6: fx.dust(v1.set(x, 0.1, 1)); fx.blood(v1.set(x + 1, 1.2, 1)); break;
+    case 7: fx.heal(v1.set(x, 0.2, -1)); fx.smoke(v1.set(x + 1.5, 0.3, -1)); break;
+    case 8: fx.splash(v1.set(x, 0.05, 2)); break;
+    case 9: fx.floatText(v1.set(x, 1.9, 0), String(12 + i * 7), { color: 0xffffff }); fx.floatText(v1.set(x + 1.4, 1.9, 0), String(140 + i), { crit: true }); break;
+    case 10: fx.floatText(v1.set(x, 2.1, 0), '+3 Железная руда', { color: 0x9fe8a0, size: 0.8 }); break;
+    default: if (actors[0]) fx.aura(actors[0].actor.group, { color: col, duration: 1.2 });
+  }
+}
+
+function tick(dt) {
+  state.time += dt;
+  shared.uTime.value = state.time;
+  if (state.cycle && actors.length) {
+    state.cycleT -= dt;
+    if (state.cycleT <= 0) {
+      state.cycleT = 2.2;
+      const name = CYCLE[state.cycleI++ % CYCLE.length];
+      for (const a of actors) a.actor.play(name);
+      state.last = name;
+    }
+  }
+  for (const a of actors) {
+    a.actor.update(dt, { speed: state.speed });
+    if (a.actor.wagon) a.actor.wagon.update(dt, { speed: state.speed, damage: state.damage, cargo: state.cargo, night: state.night });
+  }
+  if (fx) {
+    if (show === 'fx' && !fxDemo) {
+      fxDemo = fx.marker(v1.set(3, 0.02, 3), { color: 0xffc060, radius: 1.2 });
+      fx.marker(v1.set(-3, 0.02, 3), { color: 0xff5040, radius: 2 });
+    }
+    if (show === 'fx' || q.get('fxdemo')) runFxDemo(dt);
+    fx.update(dt);
+  }
+  if (!state.paused) cam.az += cam.spin * dt;
+}
+
+const hud = document.getElementById('hud');
+function render() {
+  placeCamera();
+  renderer.render(scene, camera);
+  let calls = 0;
+  let tris = 0;
+  for (const a of actors) {
+    const s = countStats(a.actor.group);
+    calls += s.calls;
+    tris += s.tris;
+  }
+  const per = actors.length ? `per actor ≈ ${(calls / actors.length).toFixed(1)} calls / ${Math.round(tris / actors.length)} tris` : '';
+  hud.textContent = `show=${show}  actors=${actors.length}  speed=${state.speed.toFixed(1)} m/s  anim=${animParam || state.last || '-'}\nactors: ${calls} calls, ${tris} tris  (${per})\nframe: ${renderer.info.render.calls} calls, ${renderer.info.render.triangles} tris`;
+  actors.forEach((a, i) => {
+    v1.copy(a.actor.group.position);
+    v1.y -= 0.12;
+    v1.project(camera);
+    labels[i].style.left = ((v1.x * 0.5 + 0.5) * innerWidth) + 'px';
+    labels[i].style.top = ((-v1.y * 0.5 + 0.5) * innerHeight) + 'px';
+    labels[i].style.display = q.get('labels') === '0' ? 'none' : 'block';
+  });
+}
+
+let last = performance.now();
+function loop(now) {
+  requestAnimationFrame(loop);
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  if (!state.paused) tick(dt);
+  render();
+}
+
+addEventListener('resize', () => {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+});
+
+window.__dbg = {
+  actors, state, cam, scene, renderer, camera,
+  setSpeed(v) { state.speed = v; },
+  play(name) { state.cycle = false; applyAnim(name); },
+  stance(name) { state.cycle = false; for (const a of actors) a.actor.setStance(name); },
+  lod(level) { for (const a of actors) a.actor.setLod(level); },
+  pause(p = true) { state.paused = p; },
+  /** Advance n fixed steps (works in a throttled/hidden tab) and render. */
+  step(n = 1, dt = 1 / 60) {
+    state.paused = true;
+    for (let i = 0; i < n; i++) tick(dt);
+    render();
+    return state.time;
+  },
+  /** Film strip: copy i is advanced i*stagger seconds into `action` (or just locomotion when null). */
+  strip(action, stagger = 0.1, speed = state.speed) {
+    state.paused = true;
+    state.cycle = false;
+    state.speed = speed;
+    actors.forEach((a, i) => {
+      for (let k = 0; k < 40; k++) a.actor.update(1 / 60, { speed });
+      if (action) {
+        if (STANCES.includes(action)) a.actor.setStance(action);
+        else a.actor.play(action);
+      }
+      const steps = Math.round((i * stagger) * 120);
+      for (let k = 0; k < steps; k++) a.actor.update(1 / 120, { speed });
+    });
+    render();
+  },
+  view(az, el, dist, tx, ty, tz) {
+    cam.az = az;
+    cam.el = el ?? cam.el;
+    cam.dist = dist ?? cam.dist;
+    if (tx !== undefined) cam.target.set(tx, ty, tz);
+    cam.spin = 0;
+    render();
+  },
+  stats() {
+    return actors.map(a => ({ name: a.name, ...countStats(a.actor.group), height: +a.actor.height.toFixed(2), radius: +a.actor.radius.toFixed(2) }));
+  },
+  get fx() { return fx; },
+  errors: [],
+};
+addEventListener('error', e => window.__dbg.errors.push(String(e.message)));
+addEventListener('unhandledrejection', e => window.__dbg.errors.push(String(e.reason && e.reason.stack || e.reason)));
+
+build().then(() => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  window.__dbg.ready = true;
+  requestAnimationFrame(loop);
+}).catch(e => {
+  window.__dbg.errors.push(String(e.stack || e));
+  hud.textContent = 'ERROR: ' + (e.stack || e);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тихая долина — звук</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 16px 20px 60px; background: #14110d; color: #e6dcc6; font: 14px/1.4 system-ui, sans-serif; }
+  h1 { font-size: 20px; letter-spacing: 0.12em; text-transform: uppercase; color: #d9b36a; margin: 0 0 4px; }
+  h2 { font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: #d9b36a; border-bottom: 1px solid #5a4a2a; padding-bottom: 4px; margin: 22px 0 10px; }
+  button { background: #241e15; color: inherit; border: 1px solid #5a4a2a; border-radius: 3px; padding: 5px 9px; margin: 2px; cursor: pointer; font: inherit; }
+  button:hover { border-color: #d9b36a; }
+  button.on { background: #5a4a2a; border-color: #d9b36a; }
+  button.ok { box-shadow: inset 0 -2px 0 #6fae5c; }
+  button.bad { box-shadow: inset 0 -2px 0 #c2533f; }
+  #unlock { font-size: 16px; padding: 10px 18px; background: #5a4a2a; }
+  .bar { position: sticky; top: 0; background: #14110d; padding: 8px 0; z-index: 2; border-bottom: 1px solid #5a4a2a; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .meter { width: 260px; height: 12px; background: #241e15; border: 1px solid #5a4a2a; position: relative; }
+  .meter i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #6fae5c, #d9b36a 70%, #c2533f); width: 0; }
+  .meter b { position: absolute; top: -2px; bottom: -2px; width: 2px; background: #fff; left: 0; }
+  .row { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; margin: 4px 0; }
+  label { display: inline-flex; gap: 8px; align-items: center; }
+  input[type=range] { width: 150px; }
+  table { border-collapse: collapse; }
+  td, th { padding: 1px 4px; text-align: left; font-weight: normal; }
+  th { color: #a8997a; }
+  code { color: #a8997a; }
+  #log { white-space: pre-wrap; font: 12px/1.4 ui-monospace, monospace; color: #a8997a; max-height: 220px; overflow: auto; }
+</style>
+</head>
+<body>
+<h1>Тихая долина — звуковой стенд</h1>
+<div class="bar">
+  <button id="unlock">Включить звук</button>
+  <div class="meter"><i id="meterFill"></i><b id="meterHold"></b></div>
+  <code id="readout">звук не включён</code>
+</div>
+
+<h2>Громкость</h2>
+<div class="row">
+  <label>Музыка <input type="range" id="musicVolume" min="0" max="1" step="0.01" value="0.6"></label>
+  <label><input type="checkbox" id="musicOn" checked> вкл.</label>
+  <label>Звуки <input type="range" id="sfxVolume" min="0" max="1" step="0.01" value="0.8"></label>
+  <label><input type="checkbox" id="sfxOn" checked> вкл.</label>
+  <button id="suspend">suspend()</button>
+  <button id="resume">resume()</button>
+</div>
+
+<h2>Музыка — настроение</h2>
+<div class="row" id="moods"></div>
+
+<h2>Окружение</h2>
+<div class="row" id="biomes"></div>
+<div class="row" id="ambience"></div>
+
+<h2>Источник звука относительно слушателя</h2>
+<div class="row">
+  <label>Расстояние, м <input type="range" id="distance" min="0" max="70" step="1" value="0"><code id="distanceValue">0</code></label>
+  <label>Направление, ° <input type="range" id="angle" min="-180" max="180" step="5" value="90"><code id="angleValue">90 (справа)</code></label>
+</div>
+
+<h2>Разовые звуки — <code>play(name)</code></h2>
+<div id="sounds"></div>
+
+<h2>Существа — <code>creature(id, kind)</code></h2>
+<table id="creatures"></table>
+
+<h2>Автопроверка уровня</h2>
+<div class="row">
+  <button id="testSounds">Проверить все звуки</button>
+  <button id="testCreatures">Проверить существ</button>
+  <button id="testBeds">Проверить музыку и окружение</button>
+</div>
+<div id="log"></div>
+
+<script type="module">
+import { createAudio, SOUND_NAMES, CREATURE_IDS } from '../src/audio/audio.js';
+
+const KINDS = ['idle', 'aggro', 'attack', 'hurt', 'death'];
+const MOODS = ['menu', 'town', 'road', 'wild', 'night', 'caravan', 'combat', 'none'];
+const BIOMES = ['meadow', 'farmland', 'forest', 'darkforest', 'heath', 'highland', 'mountain', 'snow', 'steppe', 'swamp', 'lake', 'coast'];
+const AMBIENCE_SLIDERS = [
+  ['night', 'Ночь', 0, 1, 0.01, 0],
+  ['rain', 'Дождь', 0, 1, 0.01, 0],
+  ['wind', 'Ветер', 0, 1, 0.01, 0.2],
+  ['cityDistance', 'До города, м', 0, 200, 1, 200],
+  ['waterDistance', 'До воды, м', 0, 100, 1, 100],
+  ['fireDistance', 'До костра, м', 0, 30, 1, 30],
+];
+
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const audio = createAudio({ musicVolume: 0.6, sfxVolume: 0.8, musicOn: true, sfxOn: true });
+const meter = { peak: 0, rms: 0, hold: 0, total: 0 };
+let meterReady = false;
+
+const METER_WORKLET = `
+registerProcessor('peak-meter', class extends AudioWorkletProcessor {
+  constructor() { super(); this.peak = 0; this.energy = 0; this.count = 0; }
+  process(inputs) {
+    for (const channel of inputs[0]) {
+      for (let i = 0; i < channel.length; i++) {
+        const value = Math.abs(channel[i]);
+        if (value > this.peak) this.peak = value;
+        this.energy += value * value;
+        this.count++;
+      }
+    }
+    if (this.count >= 2048) {
+      this.port.postMessage({ peak: this.peak, rms: Math.sqrt(this.energy / this.count) });
+      this.peak = 0; this.energy = 0; this.count = 0;
+    }
+    return true;
+  }
+});`;
+
+/** Attach a peak meter (audio-thread worklet, so it also works in a background tab) to the final output. */
+async function attachMeter() {
+  const info = audio.inspect();
+  if (!info || meterReady) return;
+  meterReady = true;
+  const url = URL.createObjectURL(new Blob([METER_WORKLET], { type: 'text/javascript' }));
+  await info.context.audioWorklet.addModule(url);
+  const node = new AudioWorkletNode(info.context, 'peak-meter');
+  info.output.connect(node);
+  node.port.onmessage = (event) => {
+    meter.peak = event.data.peak;
+    meter.rms = event.data.rms;
+    meter.hold = Math.max(meter.hold * 0.97, meter.peak);
+    meter.total = Math.max(meter.total, meter.peak);
+  };
+}
+
+function toDb(value) {
+  return value > 0.00001 ? (20 * Math.log10(value)).toFixed(1) : '-inf';
+}
+
+function drawMeter() {
+  const info = audio.inspect();
+  if (!info) return;
+  $('meterFill').style.width = `${Math.min(100, meter.peak * 100)}%`;
+  $('meterHold').style.left = `${Math.min(100, meter.hold * 100)}%`;
+  $('readout').textContent = `пик ${toDb(meter.peak)} дБ · RMS ${toDb(meter.rms)} дБ · голосов ${info.voices} · ${info.context.state} · музыка: ${info.mood} · загружено ${info.loaded.length}, ошибок ${info.failed.length}`;
+}
+
+function sourcePosition() {
+  const distance = Number($('distance').value);
+  const angle = (Number($('angle').value) * Math.PI) / 180;
+  if (distance === 0) return {};
+  // Listener stands at the origin looking at +z; its right-hand side is -x.
+  return { x: -Math.sin(angle) * distance, z: Math.cos(angle) * distance };
+}
+
+function button(label, parent, onClick) {
+  const element = document.createElement('button');
+  element.textContent = label;
+  element.addEventListener('click', () => onClick(element));
+  parent.append(element);
+  return element;
+}
+
+function unlock() {
+  audio.unlock();
+  attachMeter().catch((error) => log(`Измеритель недоступен: ${error.message}`));
+  $('unlock').textContent = 'Звук включён';
+}
+
+function log(text) {
+  $('log').textContent += `${text}\n`;
+  $('log').scrollTop = $('log').scrollHeight;
+}
+
+// ── controls ──
+$('unlock').addEventListener('click', unlock);
+$('suspend').addEventListener('click', () => audio.suspend());
+$('resume').addEventListener('click', () => audio.resume());
+for (const id of ['musicVolume', 'sfxVolume', 'musicOn', 'sfxOn']) {
+  $(id).addEventListener('input', () => {
+    audio.setVolumes({
+      musicVolume: Number($('musicVolume').value),
+      sfxVolume: Number($('sfxVolume').value),
+      musicOn: $('musicOn').checked,
+      sfxOn: $('sfxOn').checked,
+    });
+  });
+}
+$('distance').addEventListener('input', () => { $('distanceValue').textContent = $('distance').value; });
+$('angle').addEventListener('input', () => { $('angleValue').textContent = $('angle').value; });
+
+const moodButtons = MOODS.map((mood) => button(mood, $('moods'), (element) => {
+  unlock();
+  audio.setMusic(mood);
+  moodButtons.forEach((other) => other.classList.toggle('on', other === element));
+}));
+
+const biomeButtons = BIOMES.map((biome) => button(biome, $('biomes'), (element) => {
+  unlock();
+  audio.setAmbience({ biome });
+  biomeButtons.forEach((other) => other.classList.toggle('on', other === element));
+}));
+
+for (const [key, title, min, max, step, value] of AMBIENCE_SLIDERS) {
+  const label = document.createElement('label');
+  const input = document.createElement('input');
+  const readout = document.createElement('code');
+  input.type = 'range';
+  input.id = `amb-${key}`;
+  input.min = min;
+  input.max = max;
+  input.step = step;
+  input.value = value;
+  readout.textContent = value;
+  input.addEventListener('input', () => {
+    readout.textContent = input.value;
+    audio.setAmbience({ [key]: Number(input.value) });
+  });
+  label.append(title, input, readout);
+  $('ambience').append(label);
+}
+const indoorsLabel = document.createElement('label');
+const indoors = document.createElement('input');
+indoors.type = 'checkbox';
+indoors.addEventListener('input', () => audio.setAmbience({ indoors: indoors.checked }));
+indoorsLabel.append(indoors, 'в помещении');
+$('ambience').append(indoorsLabel);
+
+const soundButtons = new Map();
+for (const name of SOUND_NAMES) {
+  soundButtons.set(name, button(name, $('sounds'), () => {
+    unlock();
+    audio.play(name, sourcePosition());
+  }));
+}
+
+const creatureButtons = new Map();
+const header = document.createElement('tr');
+header.innerHTML = `<th>id</th>${KINDS.map((kind) => `<th>${kind}</th>`).join('')}`;
+$('creatures').append(header);
+for (const id of CREATURE_IDS) {
+  const row = document.createElement('tr');
+  const name = document.createElement('td');
+  name.textContent = id;
+  row.append(name);
+  for (const kind of KINDS) {
+    const cell = document.createElement('td');
+    creatureButtons.set(`${id}:${kind}`, button('▶', cell, () => {
+      unlock();
+      const position = sourcePosition();
+      audio.creature(id, kind, position.x, position.z);
+    }));
+    row.append(cell);
+  }
+  $('creatures').append(row);
+}
+
+// ── frame loop (interval, so it keeps running when the page is not focused) ──
+let last = performance.now();
+setInterval(() => {
+  const now = performance.now();
+  audio.setListener(0, 0, 0, 0);
+  audio.update(Math.min(0.25, (now - last) / 1000));
+  last = now;
+  drawMeter();
+}, 33);
+
+// ── automatic level checks ──
+async function measure(trigger, waitMs) {
+  await sleep(120);
+  meter.total = 0;
+  const started = trigger();
+  await sleep(waitMs);
+  return { started, peak: meter.total };
+}
+
+function mark(element, passed) {
+  if (!element) return;
+  element.classList.toggle('ok', passed);
+  element.classList.toggle('bad', !passed);
+}
+
+async function quiet() {
+  audio.setMusic('none');
+  audio.setVolumes({ musicOn: false, sfxOn: true, sfxVolume: 0.8 });
+  audio.setAmbience({ biome: 'meadow', night: 0, rain: 0, wind: 0, cityDistance: Infinity, waterDistance: Infinity, fireDistance: Infinity, indoors: false });
+  await sleep(3500);
+  const floor = await measure(() => true, 600);
+  return floor.peak;
+}
+
+async function testSounds() {
+  const floor = await quiet();
+  const results = { floor, sounds: {}, silent: [] };
+  // Park the listener's random birds far below the threshold by testing against 4× the noise floor.
+  for (const name of SOUND_NAMES) {
+    const result = await measure(() => audio.play(name, { throttleMs: 0 }), 420);
+    const passed = result.started && result.peak > Math.max(0.002, floor * 4);
+    results.sounds[name] = Number(result.peak.toFixed(4));
+    if (!passed) results.silent.push(name);
+    mark(soundButtons.get(name), passed);
+  }
+  log(`Звуки: шум ${toDb(floor)} дБ, проверено ${SOUND_NAMES.length}, тихих: ${results.silent.join(', ') || 'нет'}`);
+  return results;
+}
+
+async function testCreatures() {
+  const floor = await quiet();
+  const results = { floor, creatures: {}, silent: [] };
+  for (const id of CREATURE_IDS) {
+    for (const kind of KINDS) {
+      const key = `${id}:${kind}`;
+      const result = await measure(() => audio.creature(id, kind), 380);
+      const passed = result.started && result.peak > Math.max(0.002, floor * 4);
+      results.creatures[key] = Number(result.peak.toFixed(4));
+      if (!passed) results.silent.push(key);
+      mark(creatureButtons.get(key), passed);
+    }
+  }
+  log(`Существа: проверено ${CREATURE_IDS.length * KINDS.length}, тихих: ${results.silent.join(', ') || 'нет'}`);
+  return results;
+}
+
+async function testBeds() {
+  const floor = await quiet();
+  const results = { floor, music: {}, ambience: {} };
+  audio.setVolumes({ musicOn: true, musicVolume: 1, sfxOn: false });
+  for (const mood of MOODS) {
+    audio.setMusic(mood);
+    await sleep(4200);
+    const result = await measure(() => true, 2500);
+    results.music[mood] = Number(result.peak.toFixed(4));
+  }
+  audio.setMusic('none');
+  audio.setVolumes({ musicOn: false, sfxOn: true, sfxVolume: 1 });
+  const scenes = {
+    wind: { wind: 1 },
+    'wind-mountain': { wind: 1, biome: 'mountain' },
+    rain: { wind: 0, biome: 'meadow', rain: 1 },
+    river: { rain: 0, waterDistance: 2 },
+    sea: { biome: 'coast', waterDistance: 2 },
+    crickets: { biome: 'steppe', waterDistance: Infinity, night: 1 },
+    fire: { night: 0, biome: 'mountain', fireDistance: 1 },
+    crowd: { fireDistance: Infinity, cityDistance: 0 },
+    'crowd-indoors': { indoors: true },
+  };
+  for (const [name, params] of Object.entries(scenes)) {
+    audio.setAmbience(params);
+    await sleep(3500);
+    const result = await measure(() => true, 2500);
+    results.ambience[name] = Number(result.peak.toFixed(4));
+  }
+  await quiet();
+  log(`Музыка (пик): ${JSON.stringify(results.music)}`);
+  log(`Окружение (пик): ${JSON.stringify(results.ambience)}`);
+  return results;
+}
+
+$('testSounds').addEventListener('click', () => { unlock(); testSounds(); });
+$('testCreatures').addEventListener('click', () => { unlock(); testCreatures(); });
+$('testBeds').addEventListener('click', () => { unlock(); testBeds(); });
+
+window.preview = { audio, meter, testSounds, testCreatures, testBeds, unlock };
+</script>
+</body>
+</html>

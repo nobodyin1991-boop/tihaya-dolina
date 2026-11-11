@@ -1,0 +1,70 @@
+/* World map screen (src/ui/screens/map.js). */
+
+.map-view { display: grid; grid-template-columns: 1fr minmax(17em, 21em); gap: 1.6em; height: 100%; min-height: 0; }
+.map-stage { position: relative; min-height: 0; overflow: hidden; background: #100e0b; cursor: grab; box-shadow: 0 0 0 1px var(--line), 0 0.8em 2.4em rgba(0, 0, 0, 0.55); }
+.map-stage.dragging { cursor: grabbing; }
+.map-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.map-frame { position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 4px rgba(10, 9, 8, 0.85), inset 0 0 0 5px rgba(200, 164, 90, 0.28), inset 0 0 5em rgba(10, 8, 6, 0.75); }
+.map-markers { position: absolute; inset: 0; pointer-events: none; }
+
+.map-marker { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: auto; cursor: pointer; color: #2a1c0e; will-change: transform; }
+.map-marker-glyph { position: absolute; left: -0.8em; top: -0.8em; width: 1.6em; height: 1.6em; display: grid; place-items: center; border-radius: 50%; background: radial-gradient(circle, rgba(236, 220, 176, 0.92) 55%, rgba(236, 220, 176, 0) 72%); transition: transform 0.15s var(--ease); }
+.map-marker-glyph .ico { font-size: 1.05em; stroke-width: 1.7; }
+.map-marker:hover .map-marker-glyph { transform: scale(1.25); }
+.map-marker:hover { z-index: 9; }
+.map-marker-label { position: absolute; top: 0.95em; left: 0; transform: translateX(-50%); white-space: nowrap; font: 600 0.82em/1.1 var(--font-display); letter-spacing: 0.06em; color: #2a1c0e; text-shadow: 0 0 3px rgba(236, 220, 176, 0.95), 0 0 6px rgba(236, 220, 176, 0.8); pointer-events: none; }
+.map-marker.mk-poi .map-marker-label { display: none; font-size: 0.74em; }
+.map-markers[data-zoom="2"] .mk-poi .map-marker-label, .map-markers[data-zoom="3"] .mk-poi .map-marker-label, .mk-poi:hover .map-marker-label, .mk-poi.selected .map-marker-label { display: block; }
+.map-marker.mk-city { z-index: 4; }
+.map-marker.mk-city .map-marker-glyph { left: -1.05em; top: -1.05em; width: 2.1em; height: 2.1em; background: radial-gradient(circle, #f1e2b4 58%, rgba(241, 226, 180, 0) 74%); box-shadow: inset 0 0 0 1px rgba(60, 40, 16, 0.6); }
+.map-marker.mk-city .map-marker-glyph .ico { font-size: 1.3em; }
+.map-marker.mk-city .map-marker-label { top: 1.15em; font-size: 1.12em; letter-spacing: 0.1em; text-transform: uppercase; }
+.map-marker.f-bandit { color: #7a1d12; }
+.map-marker.f-beast { color: #7a4310; }
+.map-marker.f-none { color: #4a4034; }
+.map-marker.mk-quest { z-index: 5; color: #5a3d00; }
+.map-marker.mk-quest .map-marker-glyph { background: radial-gradient(circle, #f6d27a 55%, rgba(246, 210, 122, 0) 74%); animation: map-pulse 1.8s ease-in-out infinite; }
+.map-marker.mk-caravan { z-index: 5; color: #0e3d39; }
+.map-marker.mk-caravan .map-marker-glyph { background: radial-gradient(circle, #a9dbd3 55%, rgba(169, 219, 211, 0) 74%); }
+.map-marker.mk-ambush, .map-marker.mk-obstacle { z-index: 5; color: #fff0e8; }
+.map-marker.mk-ambush .map-marker-glyph, .map-marker.mk-obstacle .map-marker-glyph { background: radial-gradient(circle, #a8372c 55%, rgba(168, 55, 44, 0) 74%); }
+.map-marker.mk-player { z-index: 8; color: #fff6dc; pointer-events: auto; }
+.map-marker.mk-player .map-marker-glyph { background: radial-gradient(circle, rgba(20, 14, 8, 0.85) 48%, rgba(20, 14, 8, 0) 70%); filter: drop-shadow(0 0 0.35em rgba(236, 208, 140, 0.9)); }
+.map-marker.mk-player .map-marker-glyph .ico { font-size: 1.2em; color: var(--gold-bright); }
+.map-marker.tracked .map-marker-glyph, .map-marker.selected .map-marker-glyph { box-shadow: 0 0 0 2px var(--gold-bright), 0 0 0.8em rgba(236, 208, 140, 0.8); }
+.map-marker.tracked::after { content: ''; position: absolute; left: -0.22em; top: -1.5em; width: 0.44em; height: 0.44em; transform: rotate(45deg); background: var(--gold-bright); box-shadow: 0 0 0 1px #2a1c0e; }
+@keyframes map-pulse { 50% { transform: scale(1.18); } }
+
+.map-rose { position: absolute; left: 1.2em; top: 1.1em; display: flex; flex-direction: column; align-items: center; color: rgba(42, 28, 14, 0.75); font: 600 0.9em/1 var(--font-display); pointer-events: none; text-shadow: 0 0 4px rgba(236, 220, 176, 0.8); }
+.map-rose .ico { font-size: 1.6em; filter: drop-shadow(0 0 2px rgba(236, 220, 176, 0.8)); }
+.map-controls { position: absolute; right: 1em; bottom: 1em; display: flex; flex-direction: column; align-items: center; gap: 0.3em; }
+.map-ctl { width: 2.1em; height: 2.1em; display: grid; place-items: center; background: rgba(12, 14, 13, 0.88); border: 1px solid var(--line); color: var(--gold-bright); cursor: pointer; transition: background var(--t-fast); }
+.map-ctl:hover { background: rgba(60, 48, 24, 0.95); }
+.map-ctl:last-child { margin-top: 0.5em; }
+.map-zoom-label { font-size: 0.7em; color: var(--text); background: rgba(12, 14, 13, 0.8); padding: 0.1em 0.4em; min-width: 2.6em; text-align: center; }
+.map-progress { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1em; background: rgba(12, 11, 9, 0.6); pointer-events: none; transition: opacity 0.5s; }
+.map-progress.done { opacity: 0; }
+.map-progress-text { font: 500 1.2em/1.2 var(--font-display); font-style: italic; color: var(--text); letter-spacing: 0.04em; }
+
+.map-side { min-height: 0; padding-right: 0.6em; }
+.map-side-title { font: 600 1.5em/1.1 var(--font-display); letter-spacing: 0.16em; text-transform: uppercase; color: var(--gold-bright); }
+.map-side-here { margin-top: 0.35em; font-size: 0.76em; letter-spacing: 0.06em; color: var(--text-dim); min-height: 1.2em; }
+.map-card { padding: 1em 1.1em 1.1em; border: 1px solid var(--line-soft); background: rgba(10, 12, 11, 0.5); margin-bottom: 1.2em; min-height: 12.5em; }
+.map-card.empty { display: grid; place-items: center; text-align: center; color: var(--text-faint); padding: 1.5em; }
+.map-card-head { display: flex; align-items: center; gap: 0.9em; }
+.map-card-icon { width: 2.6em; height: 2.6em; display: grid; place-items: center; border: 1px solid var(--line); background: rgba(0, 0, 0, 0.35); color: var(--gold-bright); flex: none; }
+.map-card-icon .ico { font-size: 1.5em; }
+.map-card-icon.f-bandit, .map-card-icon.mk-ambush { color: #e07a66; border-color: rgba(210, 84, 63, 0.5); }
+.map-card-icon.f-beast { color: #e0a45e; }
+.map-card-name { font: 600 1.3em/1.15 var(--font-display); letter-spacing: 0.05em; color: var(--text); }
+.map-card-type { font-size: 0.66em; letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold); margin-top: 0.3em; }
+.map-card-tags { display: flex; flex-wrap: wrap; gap: 0.35em; margin-top: 0.8em; }
+.map-card-desc { margin: 0.8em 0 0.6em; font: 500 1.06em/1.35 var(--font-display); font-style: italic; color: #cdc3a8; }
+.map-card .btn { margin-top: 0.9em; width: 100%; }
+.map-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 0.25em 1em; }
+.map-legend-item { display: flex; align-items: center; gap: 0.6em; font-size: 0.8em; color: var(--text-dim); }
+.map-legend-item .ico { font-size: 1.25em; color: var(--text); }
+.map-legend-item.lg-banditcamp .ico { color: #e07a66; }
+.map-legend-item.lg-lair .ico { color: #e0a45e; }
+.map-legend-item.lg-quest .ico { color: var(--gold-bright); }
+.map-legend-item.lg-wagon .ico { color: var(--teal); }

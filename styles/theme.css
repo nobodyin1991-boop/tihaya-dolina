@@ -1,0 +1,110 @@
+/* «Янтарь и сумрак» — design tokens, fonts and base primitives shared by every UI stylesheet. */
+
+@font-face { font-family: 'Cormorant'; font-weight: 400; font-display: block; src: url('../assets/fonts/cormorant-garamond-cyrillic-400-normal.woff2') format('woff2'); unicode-range: U+0400-04FF, U+2116; }
+@font-face { font-family: 'Cormorant'; font-weight: 400; font-display: block; src: url('../assets/fonts/cormorant-garamond-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Cormorant'; font-weight: 500; font-display: block; src: url('../assets/fonts/cormorant-garamond-cyrillic-500-normal.woff2') format('woff2'); unicode-range: U+0400-04FF, U+2116; }
+@font-face { font-family: 'Cormorant'; font-weight: 500; font-display: block; src: url('../assets/fonts/cormorant-garamond-latin-500-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Cormorant'; font-weight: 500; font-style: italic; font-display: block; src: url('../assets/fonts/cormorant-garamond-cyrillic-500-italic.woff2') format('woff2'); }
+@font-face { font-family: 'Cormorant'; font-weight: 600; font-display: block; src: url('../assets/fonts/cormorant-garamond-cyrillic-600-normal.woff2') format('woff2'); unicode-range: U+0400-04FF, U+2116; }
+@font-face { font-family: 'Cormorant'; font-weight: 600; font-display: block; src: url('../assets/fonts/cormorant-garamond-latin-600-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Cormorant'; font-weight: 700; font-display: block; src: url('../assets/fonts/cormorant-garamond-cyrillic-700-normal.woff2') format('woff2'); unicode-range: U+0400-04FF, U+2116; }
+@font-face { font-family: 'Cormorant'; font-weight: 700; font-display: block; src: url('../assets/fonts/cormorant-garamond-latin-700-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Jost'; font-weight: 300; font-display: block; src: url('../assets/fonts/jost-cyrillic-300-normal.woff2') format('woff2'); unicode-range: U+0400-04FF, U+2116; }
+@font-face { font-family: 'Jost'; font-weight: 300; font-display: block; src: url('../assets/fonts/jost-latin-300-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Jost'; font-weight: 400; font-display: block; src: url('../assets/fonts/jost-cyrillic-400-normal.woff2') format('woff2'); unicode-range: U+0400-04FF, U+2116; }
+@font-face { font-family: 'Jost'; font-weight: 400; font-display: block; src: url('../assets/fonts/jost-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Jost'; font-weight: 500; font-display: block; src: url('../assets/fonts/jost-cyrillic-500-normal.woff2') format('woff2'); unicode-range: U+0400-04FF, U+2116; }
+@font-face { font-family: 'Jost'; font-weight: 500; font-display: block; src: url('../assets/fonts/jost-latin-500-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Jost'; font-weight: 600; font-display: block; src: url('../assets/fonts/jost-cyrillic-600-normal.woff2') format('woff2'); unicode-range: U+0400-04FF, U+2116; }
+@font-face { font-family: 'Jost'; font-weight: 600; font-display: block; src: url('../assets/fonts/jost-latin-600-normal.woff2') format('woff2'); }
+
+:root {
+  /* surfaces */
+  --ink: #0b0d0c;                     /* deepest background */
+  --panel: rgba(14, 16, 15, 0.88);    /* standard translucent panel */
+  --panel-solid: #121514;
+  --panel-raised: rgba(28, 31, 29, 0.92);
+  --veil: rgba(6, 8, 8, 0.62);        /* dim behind full-screen menus */
+  --line: rgba(200, 164, 90, 0.34);   /* hairline gold */
+  --line-soft: rgba(232, 223, 200, 0.12);
+  /* text */
+  --text: #e8dfc8;                    /* parchment */
+  --text-dim: #a59c86;
+  --text-faint: #6f6959;
+  /* accents */
+  --gold: #c8a45a;
+  --gold-bright: #ecd08c;
+  --amber: #e0a030;
+  --teal: #5fa7a0;
+  --health: #a8372c;
+  --health-bright: #d2543f;
+  --stamina: #5f8f4a;
+  --xp: #6f8fb8;
+  --good: #8fb86a;
+  --warn: #e0a030;
+  --bad: #d2543f;
+  /* rarity */
+  --r-common: #cfc6ae; --r-fine: #7fbf6a; --r-rare: #5d9fd6; --r-epic: #b07adf; --r-legendary: #f0a830;
+  /* type */
+  --font-display: 'Cormorant', 'Times New Roman', serif;
+  --font-body: 'Jost', 'Segoe UI', system-ui, sans-serif;
+  --track-caps: 0.16em;
+  /* metrics */
+  --u: clamp(14px, 0.95vw + 0.35vh, 20px);   /* base UI unit; everything scales from it */
+  --ease: cubic-bezier(0.22, 0.8, 0.26, 1);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ink); color: var(--text); }
+body { font: 400 var(--u)/1.45 var(--font-body); -webkit-font-smoothing: antialiased; user-select: none; cursor: default; }
+button, input, select { font: inherit; color: inherit; }
+::selection { background: rgba(200, 164, 90, 0.35); }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: rgba(200, 164, 90, 0.35); border-radius: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+#ui { position: fixed; inset: 0; pointer-events: none; }
+#ui > * { pointer-events: none; }
+#ui .interactive, #ui .screen, #ui button, #ui input, #ui select, #ui [data-action] { pointer-events: auto; }
+
+/* —— primitives —— */
+.t-display { font-family: var(--font-display); font-weight: 600; letter-spacing: var(--track-caps); text-transform: uppercase; }
+.t-title { font-family: var(--font-display); font-weight: 600; font-size: 1.55em; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gold-bright); }
+.t-caps { font-size: 0.72em; letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-dim); }
+.t-dim { color: var(--text-dim); }
+.t-num { font-variant-numeric: tabular-nums; }
+
+.panel { background: var(--panel); border: 1px solid var(--line-soft); backdrop-filter: blur(6px); }
+.rule { height: 1px; border: 0; background: linear-gradient(90deg, transparent, var(--line) 18%, var(--line) 82%, transparent); margin: 0.6em 0; }
+.ornament { display: flex; align-items: center; gap: 0.8em; color: var(--gold); }
+.ornament::before, .ornament::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--line)); }
+.ornament::after { transform: scaleX(-1); }
+
+.btn { background: transparent; border: 1px solid var(--line); padding: 0.5em 1.3em; color: var(--text); font-family: var(--font-display); font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; cursor: pointer; transition: background 0.18s var(--ease), border-color 0.18s, color 0.18s; }
+.btn:hover:not(:disabled) { background: rgba(200, 164, 90, 0.14); border-color: var(--gold); color: var(--gold-bright); }
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn.primary { border-color: var(--gold); color: var(--gold-bright); background: rgba(200, 164, 90, 0.1); }
+
+.key { display: inline-flex; align-items: center; justify-content: center; min-width: 1.6em; height: 1.6em; padding: 0 0.4em; border: 1px solid var(--line); border-radius: 3px; font: 500 0.72em/1 var(--font-body); color: var(--gold-bright); background: rgba(0, 0, 0, 0.35); letter-spacing: 0.04em; }
+.coin::before { content: ''; display: inline-block; width: 0.72em; height: 0.72em; margin-right: 0.3em; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #f6de9a, #c8a45a 55%, #7a5c24); vertical-align: -0.04em; }
+
+/* —— additions by the UI framework —— */
+:root {
+  --hud-scale: 1;                         /* settings.hudScale */
+  --panel-deep: rgba(9, 11, 10, 0.94);
+  --gold-dim: rgba(200, 164, 90, 0.6);
+  --row-hover: linear-gradient(90deg, rgba(200, 164, 90, 0.10), rgba(200, 164, 90, 0.02) 70%, transparent);
+  --row-selected: linear-gradient(90deg, rgba(200, 164, 90, 0.26), rgba(200, 164, 90, 0.07) 60%, transparent);
+  --shadow-text: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 6px rgba(0, 0, 0, 0.55);
+  --t-fast: 0.14s;
+  --t-screen: 0.17s;
+}
+.ico { display: inline-block; flex: none; vertical-align: -0.16em; overflow: visible; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.5em; font-size: 0.95em; line-height: 1.2; white-space: nowrap; }
+.btn .ico { font-size: 1.1em; }
+.btn.small { padding: 0.3em 0.9em; font-size: 0.82em; }
+.btn.danger { border-color: rgba(210, 84, 63, 0.6); color: #eab1a4; }
+.btn.danger:hover:not(:disabled) { background: rgba(210, 84, 63, 0.16); border-color: var(--bad); color: #ffd6cc; }
+.btn:focus-visible, button:focus-visible { outline: 1px solid var(--gold); outline-offset: 2px; }
+[hidden] { display: none !important; }

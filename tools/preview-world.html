@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Тихая долина — предпросмотр мира</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0d10; overflow: hidden; font-family: Consolas, monospace; }
+  canvas { width: 100vw; height: 100vh; display: block; }
+  #hud { position: fixed; left: 10px; top: 10px; color: #e8dcc0; font-size: 12px; line-height: 1.45; white-space: pre;
+         background: rgba(10, 12, 14, 0.55); border: 1px solid rgba(200, 164, 90, 0.45); padding: 8px 10px; pointer-events: none; }
+  #help { position: fixed; right: 10px; bottom: 10px; color: #b9ad90; font-size: 11px; background: rgba(10, 12, 14, 0.5); padding: 6px 8px; pointer-events: none; }
+</style>
+<script type="importmap">{"imports":{"three":"/vendor/three.module.js","three/addons/":"/vendor/three-addons/"}}</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="hud">загрузка…</div>
+<div id="help">WASD — полёт · мышь (зажать) — обзор · Shift — быстро · Q/E — вниз/вверх · [ ] — час · 1-5 — погода · H — скрыть HUD
+?x=&amp;z=&amp;h=&amp;yaw=&amp;pitch=&amp;hour=&amp;weather=&amp;quality=&amp;timescale=</div>
+<script type="module">
+import * as THREE from 'three';
+import { createRenderer } from '/src/world/renderer.js';
+import { QUALITY } from '/src/world/quality.js';
+import { shared } from '/src/world/materials.js';
+import { createColliders } from '/src/world/collision.js';
+import { heightAt, regionAt, waterSurfaceAt } from '/src/world/terrain.js';
+const standAt = (x, z) => Math.max(heightAt(x, z), waterSurfaceAt(x, z) ?? -Infinity);
+
+const params = new URLSearchParams(location.search);
+const num = (key, fallback) => (params.has(key) ? parseFloat(params.get(key)) : fallback);
+const qualityName = QUALITY[params.get('quality')] ? params.get('quality') : 'high';
+const state = {
+  hour: num('hour', 10),
+  weather: params.get('weather') || 'clear',
+  timescale: num('timescale', 0),     // game hours per real second
+  yaw: num('yaw', 0.6),
+  pitch: num('pitch', -0.12),
+  paused: false,
+};
+const WEATHERS = ['clear', 'cloudy', 'rain', 'fog', 'storm'];
+
+const canvas = document.getElementById('view');
+const hud = document.getElementById('hud');
+const R = createRenderer({ canvas, quality: qualityName });
+const { scene, camera, renderer } = R;
+const colliders = createColliders();
+const ctx = { scene, camera, renderer, colliders, quality: R.quality };
+
+const startX = num('x', 60);
+const startZ = num('z', 160);
+camera.position.set(startX, standAt(startX, startZ) + num('h', 12), startZ);
+
+// optional systems are loaded one by one so a missing or broken module does not blank the preview
+const systems = {};
+const errors = [];
+async function load(name, path, factory) {
+  try {
+    const mod = await import(path);
+    systems[name] = mod[factory](ctx);
+  } catch (err) {
+    errors.push(name + ': ' + err.message);
+    console.error('[preview] ' + name, err);
+  }
+}
+await load('sky', '/src/world/sky.js', 'createSky');
+await load('terrain', '/src/world/terrain-mesh.js', 'createTerrain');
+await load('water', '/src/world/water.js', 'createWater');
+await load('vegetation', '/src/world/vegetation.js', 'createVegetation');
+await load('weather', '/src/world/weather.js', 'createWeather');
+await load('life', '/src/world/ambient-life.js', 'createAmbientLife');
+
+const focus = new THREE.Vector3();
+const keys = new Set();
+let dragging = false;
+addEventListener('keydown', e => {
+  keys.add(e.code);
+  if (e.code === 'BracketLeft') state.hour = (state.hour + 23.5) % 24;
+  if (e.code === 'BracketRight') state.hour = (state.hour + 0.5) % 24;
+  if (e.code.startsWith('Digit')) { const w = WEATHERS[+e.code.slice(5) - 1]; if (w) state.weather = w; }
+  if (e.code === 'KeyH') hud.style.display = hud.style.display === 'none' ? '' : 'none';
+});
+addEventListener('keyup', e => keys.delete(e.code));
+canvas.addEventListener('mousedown', () => { dragging = true; });
+addEventListener('mouseup', () => { dragging = false; });
+addEventListener('mousemove', e => {
+  if (!dragging) return;
+  state.yaw -= e.movementX * 0.004;
+  state.pitch = Math.max(-1.5, Math.min(1.5, state.pitch - e.movementY * 0.004));
+});
+addEventListener('resize', () => R.resize());
+
+const forward = new THREE.Vector3();
+const right = new THREE.Vector3();
+function moveCamera(dt) {
+  const speed = (keys.has('ShiftLeft') || keys.has('ShiftRight') ? 160 : 22) * dt;
+  forward.set(Math.sin(state.yaw) * Math.cos(state.pitch), Math.sin(state.pitch), Math.cos(state.yaw) * Math.cos(state.pitch));
+  right.set(-Math.cos(state.yaw), 0, Math.sin(state.yaw));
+  if (keys.has('KeyW')) camera.position.addScaledVector(forward, speed);
+  if (keys.has('KeyS')) camera.position.addScaledVector(forward, -speed);
+  if (keys.has('KeyD')) camera.position.addScaledVector(right, speed);
+  if (keys.has('KeyA')) camera.position.addScaledVector(right, -speed);
+  if (keys.has('KeyE')) camera.position.y += speed;
+  if (keys.has('KeyQ')) camera.position.y -= speed;
+  const ground = standAt(camera.position.x, camera.position.z) + 0.6;
+  if (camera.position.y < ground) camera.position.y = ground;
+  forward.set(Math.sin(state.yaw) * Math.cos(state.pitch), Math.sin(state.pitch), Math.cos(state.yaw) * Math.cos(state.pitch));
+  camera.lookAt(camera.position.x + forward.x, camera.position.y + forward.y, camera.position.z + forward.z);
+}
+
+let streamBudget = 0;   // 0 = each system's own default slice
+function frame(dt) {
+  shared.uTime.value += dt;
+  state.hour = (state.hour + state.timescale * dt + 24) % 24;
+  moveCamera(dt);
+  focus.set(camera.position.x, heightAt(camera.position.x, camera.position.z), camera.position.z);
+  const night = systems.sky ? systems.sky.night : 0;
+  if (systems.weather) systems.weather.update(dt, state.weather, focus, night);
+  if (systems.sky) systems.sky.update(dt, state.hour, state.weather, focus);
+  if (systems.terrain) systems.terrain.update(focus, streamBudget || undefined);
+  if (systems.water) systems.water.update(dt, focus);
+  if (systems.vegetation) systems.vegetation.update(dt, focus, streamBudget || undefined);
+  if (systems.life) systems.life.update(dt, focus, night);
+  R.render(dt);
+}
+
+let hudTimer = 0;
+function drawHud(dt) {
+  hudTimer -= dt;
+  if (hudTimer > 0) return;
+  hudTimer = 0.25;
+  const i = R.info();
+  const t = systems.terrain ? systems.terrain.stats() : { nodes: 0, visible: 0, queued: 0 };
+  const v = systems.vegetation && systems.vegetation.stats ? systems.vegetation.stats() : null;
+  const p = camera.position;
+  const region = regionAt(p.x, p.z);
+  hud.textContent =
+    `${R.gpuName}\n` +
+    `качество ${R.quality.name} · ${i.fps} к/с (${i.frameMs.toFixed(1)} мс)\n` +
+    `draw calls ${i.calls} · треугольников ${(i.triangles / 1000).toFixed(0)}k · геометрий ${i.geometries}\n` +
+    `чанки: ${t.nodes} (видимых ${t.visible}, в очереди ${t.queued})` + (v ? ` · растит.: ${v.cells} яч., ${v.blocks} блоков, очередь ${v.queued}` : '') + '\n' +
+    `x ${p.x.toFixed(0)} z ${p.z.toFixed(0)} y ${p.y.toFixed(1)} · ${region.name} (${region.biome})\n` +
+    `час ${state.hour.toFixed(2)} · погода ${state.weather} · коллайдеров ${colliders.count}` +
+    (errors.length ? '\nОШИБКИ: ' + errors.join(' | ') : '');
+}
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+  if (!state.paused) {
+    frame(dt);
+    drawHud(dt);
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// console hooks: drive the scene without rAF (hidden tab) and jump around
+window.__dbg = {
+  THREE, R, ctx, systems, state, errors, shared,
+  setCamera(x, z, h = 12, yaw = state.yaw, pitch = state.pitch) {
+    camera.position.set(x, standAt(x, z) + h, z);
+    state.yaw = yaw;
+    state.pitch = pitch;
+  },
+  setHour(hour) { state.hour = hour; },
+  /** Set the weather; `snap` skips the smooth transition. */
+  setWeather(weather, snap = true) {
+    state.weather = weather;
+    if (!snap) return;
+    for (let k = 0; k < 40; k++) {
+      if (systems.sky) systems.sky.update(1, state.hour, weather, focus);
+      if (systems.weather) systems.weather.update(1, weather, focus, 0);
+    }
+  },
+  /** Run n frames synchronously with a fixed dt. */
+  step(n = 1, dt = 1 / 60) {
+    for (let k = 0; k < n; k++) frame(dt);
+    hudTimer = 0;
+    drawHud(1);
+    return R.info();
+  },
+  /** Stream with a big budget until everything around the camera is generated (or maxMs passed), then render. */
+  settle(maxMs = 8000) {
+    const t0 = performance.now();
+    const before = streamBudget;
+    streamBudget = 30;
+    let frames = 0;
+    for (;;) {
+      frame(1 / 60);
+      frames++;
+      const tq = systems.terrain ? systems.terrain.stats().queued : 0;
+      const vq = systems.vegetation && systems.vegetation.stats ? systems.vegetation.stats().queued : 0;
+      if ((tq === 0 && vq === 0 && frames > 3) || performance.now() - t0 > maxMs) break;
+    }
+    streamBudget = before;
+    for (let k = 0; k < 8; k++) frame(1 / 60);
+    hudTimer = 0;
+    drawHud(1);
+    return { frames, ms: Math.round(performance.now() - t0), ...R.info() };
+  },
+  /** Average real frame time over n rendered frames (GPU finish forced), for rough benchmarking. */
+  bench(n = 60) {
+    const gl = renderer.getContext();
+    const px = new Uint8Array(4);
+    frame(1 / 60);
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    const t0 = performance.now();
+    for (let k = 0; k < n; k++) frame(1 / 60);
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    const ms = (performance.now() - t0) / n;
+    return { ms: +ms.toFixed(2), fps: Math.round(1000 / ms), ...R.info() };
+  },
+  info: () => R.info(),
+};
+</script>
+</body>
+</html>

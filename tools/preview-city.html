@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Тихая долина — поселения (превью)</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #20242a; overflow: hidden; font: 13px/1.4 system-ui, sans-serif; color: #e8dcc0; }
+  #hud { position: fixed; left: 10px; top: 8px; background: rgba(12, 14, 18, .72); padding: 8px 12px; border: 1px solid rgba(200, 164, 90, .4); white-space: pre; pointer-events: none; }
+  #err { position: fixed; left: 10px; bottom: 8px; color: #ff8f7a; white-space: pre-wrap; max-width: 90vw; }
+</style>
+<script type="importmap">{"imports":{"three":"/vendor/three.module.js","three/addons/":"/vendor/three-addons/"}}</script>
+</head>
+<body>
+<div id="hud">…</div>
+<div id="err"></div>
+<script type="module">
+// Preview of settlements and structures.
+// ?city=valley|ford|harbor  ?poi=<id>  ?prop=<kind>|all  ?node=<type>|all  ?bridge=<index>  ?roadside=<leg>:<s>
+// ?night=1  ?view=top|street|gate  WASD/QE + mouse drag = fly, Shift = fast.
+import * as THREE from 'three';
+import { shared, PALETTE } from '/src/world/materials.js';
+import { heightAt, BRIDGES, legPoint } from '/src/world/terrain.js';
+import { createColliders } from '/src/world/collision.js';
+import { CITIES, POIS, poiById, cityByKey } from '/src/data/world-map.js';
+
+const q = new URLSearchParams(location.search);
+const hud = document.getElementById('hud');
+const errBox = document.getElementById('err');
+window.addEventListener('error', e => { errBox.textContent += e.message + '\n'; });
+window.addEventListener('unhandledrejection', e => { errBox.textContent += (e.reason && e.reason.stack || e.reason) + '\n'; });
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.3, 3000);
+const night = +(q.get('night') || 0);
+shared.uNight.value = night;
+const skyDay = new THREE.Color(0xb9c9cf), skyNight = new THREE.Color(0x0d1420);
+const sky = skyDay.clone().lerp(skyNight, night);
+scene.background = sky;
+scene.fog = new THREE.FogExp2(sky.getHex(), 0.0016);
+const hemi = new THREE.HemisphereLight(0xcfe0ea, 0x4d4a3a, 1.15 - night * 0.85);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(night ? 0x8fa6d8 : 0xffe0b0, night ? 0.5 : 3.0);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.05;
+scene.add(sun, sun.target);
+
+const colliders = createColliders();
+const ctx = { scene, colliders, quality: 'high', sync: true };
+let focus = { x: 0, y: 0, z: 0, r: 60 };
+let built = null;
+const info = {};
+
+function terrainPatch(cx, cz, half, step) {
+  const n = Math.round(half * 2 / step);
+  const geo = new THREE.PlaneGeometry(half * 2, half * 2, n, n);
+  geo.rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position;
+  const col = new Float32Array(pos.count * 3);
+  const grass = new THREE.Color(0x66803f), dirt = new THREE.Color(0x7c6c4c), sand = new THREE.Color(0xb9a878), c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i) + cx, z = pos.getZ(i) + cz;
+    const h = heightAt(x, z);
+    pos.setXYZ(i, x, h, z);
+    c.copy(h < 2.2 ? sand : grass);
+    const city = CITIES.find(k => Math.hypot(x - k.x, z - k.z) < k.radius + 3);
+    if (city) c.lerp(city.style === 'timber' ? grass.clone().lerp(dirt, 0.35) : city.style === 'stone' ? new THREE.Color(0x77756a) : new THREE.Color(0xbba77c), 0.85);
+    c.multiplyScalar(0.9 + 0.2 * Math.sin(x * 0.31) * Math.cos(z * 0.27));
+    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(half * 2, half * 2).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x2f6f86, roughness: 0.25, transparent: true, opacity: 0.86 }));
+  water.position.set(cx, 0, cz);
+  scene.add(water);
+}
+
+function flatFloor(size) {
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x77805a, roughness: 1 }));
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+}
+
+async function sheet(kinds, make, spacing) {
+  const cols = Math.ceil(Math.sqrt(kinds.length * 1.6));
+  kinds.forEach((kind, i) => {
+    const obj = make(kind, i);
+    obj.position.set((i % cols - (cols - 1) / 2) * spacing, 0, (Math.floor(i / cols)) * spacing);
+    scene.add(obj);
+  });
+  const rows = Math.ceil(kinds.length / cols);
+  flatFloor(Math.max(cols, rows) * spacing * 3);
+  focus = { x: 0, y: 0, z: (rows - 1) * spacing / 2, r: Math.max(cols, rows) * spacing * 0.42 };
+}
+
+async function setup() {
+  const t0 = performance.now();
+  if (q.get('prop')) {
+    const { createProp, PROP_KINDS } = await import('/src/world/props.js');
+    const kinds = q.get('prop') === 'all' ? PROP_KINDS : q.get('prop').split(',');
+    await sheet(kinds, kind => createProp(kind, { seed: 11 }), +(q.get('spacing') || 7));
+    info.kinds = kinds;
+  } else if (q.get('node')) {
+    const { createResourceNode, NODE_TYPES } = await import('/src/world/resource-nodes.js');
+    const kinds = q.get('node') === 'all' ? NODE_TYPES : q.get('node').split(',');
+    await sheet(kinds, (kind, i) => createResourceNode(kind, 100 + i), 4);
+    info.kinds = kinds;
+  } else if (q.get('poi')) {
+    const poi = poiById(q.get('poi'));
+    const { buildPoi } = await import('/src/world/poi-builder.js');
+    terrainPatch(poi.x, poi.z, poi.r + 110, 2.5);
+    built = buildPoi(ctx, poi.id);
+    focus = { x: poi.x, y: poi.y, z: poi.z, r: poi.r };
+  } else if (q.get('bridge')) {
+    const b = BRIDGES[+q.get('bridge')];
+    const { buildBridges } = await import('/src/world/bridges.js');
+    terrainPatch(b.x, b.z, 130, 2);
+    built = buildBridges(ctx);
+    focus = { x: b.x, y: b.y, z: b.z, r: 34 };
+  } else if (q.get('roadside')) {
+    const [leg, s] = q.get('roadside').split(':').map(Number);
+    const p = legPoint(leg, s);
+    const { buildRoadside } = await import('/src/world/roadside.js');
+    terrainPatch(p.x, p.z, 160, 2.5);
+    built = buildRoadside(ctx);
+    if (built.update) built.update({ x: p.x, z: p.z });
+    focus = { x: p.x, y: p.y, z: p.z, r: 26 };
+  } else {
+    const city = cityByKey(q.get('city') || 'valley');
+    const { buildCity } = await import('/src/world/city-builder.js');
+    terrainPatch(city.x, city.z, city.radius + 190, 4);
+    built = buildCity(ctx, city.key);
+    focus = { x: city.x, y: city.y, z: city.z, r: city.radius };
+    info.layout = built.layout;
+    if (night) {
+      for (const l of built.lamps.slice(0, 40)) {
+        const pl = new THREE.PointLight(0xffc27a, 28, 26, 1.8);
+        pl.position.set(l.x, l.y, l.z);
+        scene.add(pl);
+      }
+    }
+  }
+  info.buildMs = Math.round(performance.now() - t0);
+  const view = q.get('view') || 'air';
+  const r = focus.r;
+  if (view === 'top') setCam(focus.x, focus.y + r * 2.6, focus.z + 0.01, focus.x, focus.y, focus.z);
+  else if (view === 'street') setCam(focus.x + r * 0.5, focus.y + 2.2, focus.z + 2, focus.x, focus.y + 3, focus.z);
+  else setCam(focus.x + r * 0.95, focus.y + r * 0.8, focus.z + r * 1.25, focus.x, focus.y + r * 0.05, focus.z);
+}
+
+const look = { yaw: 0, pitch: 0 };
+function setCam(x, y, z, tx, ty, tz) {
+  camera.position.set(x, y, z);
+  camera.lookAt(tx, ty, tz);
+  const e = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+  look.yaw = e.y; look.pitch = e.x;
+  placeSun();
+}
+function placeSun() {
+  const r = Math.max(60, focus.r * 1.5);
+  sun.target.position.set(focus.x, focus.y, focus.z);
+  sun.position.set(focus.x - r * 1.1, focus.y + r * 1.25, focus.z + r * 0.7);
+  const cam = sun.shadow.camera;
+  cam.left = -r * 1.4; cam.right = r * 1.4; cam.top = r * 1.4; cam.bottom = -r * 1.4;
+  cam.near = 1; cam.far = r * 5;
+  cam.updateProjectionMatrix();
+}
+
+const keys = new Set();
+addEventListener('keydown', e => keys.add(e.code));
+addEventListener('keyup', e => keys.delete(e.code));
+let drag = false;
+renderer.domElement.addEventListener('mousedown', () => { drag = true; });
+addEventListener('mouseup', () => { drag = false; });
+addEventListener('mousemove', e => {
+  if (!drag) return;
+  look.yaw -= e.movementX * 0.004;
+  look.pitch = Math.max(-1.5, Math.min(1.5, look.pitch - e.movementY * 0.004));
+});
+addEventListener('resize', () => {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+});
+
+const clock = new THREE.Clock();
+const dir = new THREE.Vector3();
+function frame(dtForced) {
+  const dt = dtForced ?? Math.min(0.1, clock.getDelta());
+  shared.uTime.value += dt;
+  camera.quaternion.setFromEuler(new THREE.Euler(look.pitch, look.yaw, 0, 'YXZ'));
+  const speed = (keys.has('ShiftLeft') ? 60 : 14) * dt;
+  dir.set((keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0), (keys.has('KeyE') ? 1 : 0) - (keys.has('KeyQ') ? 1 : 0), (keys.has('KeyS') ? 1 : 0) - (keys.has('KeyW') ? 1 : 0));
+  camera.position.add(dir.applyQuaternion(camera.quaternion).multiplyScalar(speed));
+  renderer.render(scene, camera);
+  const r = renderer.info.render;
+  info.calls = r.calls; info.triangles = r.triangles;
+  hud.textContent = `draw calls ${r.calls}   triangles ${r.triangles.toLocaleString('ru')}   build ${info.buildMs ?? '…'} ms\n${location.search}`;
+}
+function loop() {
+  frame();
+  requestAnimationFrame(loop);
+}
+
+window.__dbg = { THREE, renderer, scene, camera, colliders, info, setCam, frame, shared, get built() { return built; }, get focus() { return focus; }, ready: false };
+setup().then(() => {
+  window.__dbg.ready = true;
+  frame(0.016);
+  loop();
+}).catch(e => { errBox.textContent += (e.stack || e) + '\n'; });
+</script>
+</body>
+</html>

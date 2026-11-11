@@ -1,0 +1,22 @@
+{
+  "name": "tihaya-dolina",
+  "productName": "Тихая долина",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "gpu-check": "node tools/gpu-check.mjs",
+    "web": "node tools/serve.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@fontsource/cormorant-garamond": "^5.3.0",
+    "@fontsource/jost": "^5.3.0",
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "electron": "^45.3.0"
+  }
+}

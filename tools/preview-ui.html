@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Тихая долина — макет интерфейса</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../styles/theme.css">
+  <link rel="stylesheet" href="../styles/kit.css">
+  <link rel="stylesheet" href="../styles/hud.css">
+  <link rel="stylesheet" href="../styles/screens.css">
+  <link rel="stylesheet" href="../styles/title.css">
+  <link rel="stylesheet" href="../styles/map.css">
+  <link rel="stylesheet" href="../styles/game-screens.css">
+  <link rel="stylesheet" href="../styles/caravan.css">
+  <link rel="stylesheet" href="../styles/services.css">
+  <style>
+    /* a painted stand-in for the 3D world */
+    #game { background:
+      radial-gradient(ellipse 60% 30% at 68% 34%, rgba(255, 214, 140, 0.55), transparent 70%),
+      linear-gradient(180deg, #5d7c93 0%, #b7b79a 34%, #d9b987 44%, #6f7f52 45%, #4d6540 62%, #34482f 100%); }
+    #world-hills { position: fixed; inset: 0; pointer-events: none; background:
+      radial-gradient(ellipse 50% 18% at 22% 47%, #50683f 60%, transparent 61%),
+      radial-gradient(ellipse 60% 22% at 80% 50%, #435a38 60%, transparent 61%),
+      radial-gradient(ellipse 80% 30% at 45% 100%, rgba(20, 30, 20, 0.6), transparent 70%); }
+    .demo-grid { display: grid; grid-template-columns: repeat(8, 3em); gap: 0.4em; margin: 0.6em 0 1em; }
+    .demo-kit { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5em; height: 100%; min-height: 0; }
+    .demo-kit > div { min-height: 0; }
+    .demo-line { display: flex; flex-wrap: wrap; align-items: center; gap: 1em; margin: 0.6em 0; }
+  </style>
+</head>
+<body>
+  <canvas id="game" tabindex="0"></canvas>
+  <div id="world-hills"></div>
+  <div id="ui"></div>
+  <script type="module">
+    // tools/preview-ui.html?mock=1&phase=title|playing&screen=<id>&demo=death|loading|levelup|banner|burst|low|combat|picker|kit|icons
+    //   &still=1 (freeze animations for screenshots)  &target=0..4 (fixed target)  &events=0 (no random events)  &save=0 (no save on the title screen)
+    import { createMockGame } from '../src/ui/mock-game.js';
+    import { createUI } from '../src/ui/ui.js';
+    import { ITEMS } from '../src/data/items.js';
+    import { ICON_KEYS, icon } from '../src/ui/icons.js';
+    import * as kit from '../src/ui/kit.js';
+
+    const query = new URLSearchParams(location.search);
+    // &still=1 — no CSS transitions/animations and a timer-driven frame loop: stable screenshots in a throttled/background pane
+    const still = query.get('still') === '1';
+    if (still) {
+      const style = document.createElement('style');
+      style.textContent = '*, *::before, *::after { transition: none !important; animation-duration: 0s !important; animation-delay: 0s !important; }';
+      document.head.append(style);
+    }
+    const phase = query.get('phase') || (query.get('screen') || query.get('demo') ? 'playing' : 'title');
+    const g = createMockGame({
+      canvas: document.getElementById('game'),
+      phase: query.get('demo') === 'picker' ? 'title' : phase,
+      hasSave: query.get('save') !== '0',
+      events: query.get('events') !== '0',
+      timer: still,
+      target: query.has('target') ? Number(query.get('target')) : undefined,
+    });
+    // &real=1 also loads src/ui/screens/index.js (the gameplay screens) instead of the demo tabs
+    const real = query.get('real') === '1';
+    const ui = createUI(g, { gameScreens: real });
+    window.g = g;
+    window.ui = ui;
+    window.kit = kit;
+
+    // —— demo tabs: stand-ins for the gameplay screens, built only with the kit ——
+    function registerDemoScreens() {
+      const { el, listDetail, listRow, itemSlot, itemTooltip, sectionTitle, statRow, costLine, button, numberStepper, bar, progressRing, tag, panel, emptyState } = kit;
+      const all = Object.values(ITEMS);
+      ui.registerScreen({
+        id: 'inventory', title: 'Инвентарь', action: 'inventory', tab: { order: 10, icon: 'inventory' },
+        create() {
+          const view = listDetail({
+            items: all.slice(0, 160),
+            emptyText: 'Здесь пусто',
+            filters: [
+              { id: 'all', label: 'Всё' },
+              { id: 'weapon', label: 'Оружие', test: i => i.type === 'weapon' },
+              { id: 'armor', label: 'Доспехи', test: i => i.type === 'armor' },
+              { id: 'consumable', label: 'Расходуемое', test: i => i.type === 'consumable' },
+              { id: 'material', label: 'Материалы', test: i => i.type === 'material' },
+              { id: 'quest', label: 'Сюжетное', test: i => i.type === 'quest' },
+            ],
+            renderRow: i => listRow({ icon: i.icon, label: i.name, rarity: i.rarity, right: kit.coins(i.value), sub: kit.ITEM_TYPE_NAMES[i.type] }),
+            renderDetail: i => el('div', null, [
+              itemTooltip(i.id),
+              sectionTitle('Действия'),
+              el('div.demo-line', null, [numberStepper({ value: 1, min: 1, max: 20 }), button('Продать', { primary: true }), button('Выбросить', { danger: true, small: true })]),
+              sectionTitle('Стоимость улучшения', 'пример costLine'),
+              costLine({ coins: 240, lp: 1, items: { ingot: 2, leather: 4 } }, { coins: 1284, lp: 0, items: { ingot: 5, leather: 1 } }),
+            ]),
+          });
+          return { el: view.el, onKey: e => view.handleKey(e), hints: () => [{ key: 'ЛКМ', label: 'Выбрать' }, { key: 'Enter', label: 'Использовать' }] };
+        },
+      });
+      ui.registerScreen({
+        id: 'character', title: 'Персонаж', action: 'character', tab: { order: 20, icon: 'character' },
+        create() {
+          const grid = el('div.demo-grid', null, all.slice(60, 92).map((i, n) => itemSlot(i.id, n % 5 === 0 ? 12 : 1, { equipped: n < 3, selected: n === 5, onClick() {} })).concat([itemSlot(null), itemSlot(null, 0, { placeholder: 'helmet' })]));
+          const hp = bar({ value: 236, max: 280, kind: 'health', text: true });
+          const view = el('div.demo-kit', null, [
+            el('div.kit-scroll', null, [
+              sectionTitle('Снаряжение', '32 / 40'), grid,
+              sectionTitle('Характеристики'),
+              statRow('Здоровье', 280, +14), statRow('Броня', 42, -3), statRow('Шанс крит. удара', '12%'),
+              el('div.demo-line', null, [hp]),
+              el('div.demo-line', null, [bar({ value: 60, max: 100, kind: 'stamina' }), bar({ value: 30, max: 100, kind: 'xp', label: 'Кузнец — 3 ранг' })]),
+            ]),
+            el('div.kit-scroll', null, [
+              panel('Прогресс', [el('div.demo-line', null, [progressRing({ value: 0.62, label: '5' }), progressRing({ value: 0.3, label: '12', kind: 'xp', size: '3em' }), tag('урон', 'bad'), tag('поддержка', 'good'), tag('элита', 'warn'), tag('новое', 'gold')])]),
+              panel('Кнопки', [el('div.demo-line', null, [button('Принять', { primary: true }), button('Отмена'), button('Удалить', { danger: true }), button('Малая', { small: true, icon: 'check' }), button('Недоступно', { disabled: true })])]),
+              panel('Диалоги', [el('div.demo-line', null, [button('ui.confirm', { onClick: () => ui.confirm({ title: 'Продать всё?', text: 'Вернуть товар будет нельзя.', yes: 'Продать' }).then(v => ui.toast(v ? 'Продано' : 'Отменено', v ? 'good' : 'info')) }), button('toast', { onClick: () => ui.toast('Недостаточно монет', 'bad') })])]),
+              emptyState('Журнал пуст — возьмите задание у старосты', 'journal'),
+            ]),
+          ]);
+          return { el: view };
+        },
+      });
+      for (const [id, title, order, action] of [['skills', 'Умения', 30, 'skills'], ['crafting', 'Ремесло', 40, 'crafting'], ['journal', 'Журнал', 50, 'journal'], ['caravan', 'Караван', 70, 'caravan']]) {
+        ui.registerScreen({ id, title, action, tab: { order, icon: id }, create: () => ({ el: emptyState(`Экран «${title}» добавит второй модуль интерфейса`, id) }) });
+      }
+      ui.registerScreen({
+        id: 'icons', title: 'Иконки', create() {
+          const box = el('div.kit-scroll', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 7.2em)', gap: '0.9em 0.4em', alignContent: 'start' } }, ICON_KEYS.map(key => el('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3em', fontSize: '0.7em', color: 'var(--text-dim)' } }, [icon(key, { size: '2.6em' }), key])));
+          box.querySelectorAll('svg').forEach(s => { s.style.color = 'var(--text)'; });
+          return { el: box };
+        },
+      });
+      ui.setQuestTrackerProvider(() => [
+        { title: 'Голова Косого', objectives: [{ text: 'Найти лагерь на Лесном тракте', done: true }, { text: 'Победить разбойников', cur: 3, need: 6 }, { text: 'Одолеть Косого', cur: 0, need: 1 }] },
+        { title: 'Травы для аптекаря', objectives: [{ text: 'Собрать лекарственную траву', cur: 7, need: 10 }] },
+      ]);
+    }
+    if (query.get('demo') !== 'bare' && !real) registerDemoScreens();
+
+    const demo = query.get('demo');
+    const screen = query.get('screen');
+    const after = (ms, fn) => setTimeout(fn, ms);
+    after(350, () => {
+      if (demo === 'kit') ui.open('character');
+      else if (demo === 'icons') ui.open('icons');
+      else if (demo === 'death') g.mock.die();
+      else if (demo === 'loading') g.mock.loading();
+      else if (demo === 'levelup') g.mock.levelUp();
+      else if (demo === 'banner') g.mock.banner(query.get('kind') || 'city');
+      else if (demo === 'burst') g.mock.burst();
+      else if (demo === 'low') g.mock.lowHealth();
+      else if (demo === 'combat') { g.mock.combat(true); g.mock.burst(); g.mock.banner('region'); }
+      else if (demo === 'picker') ui.title.openPicker();
+      if (screen) ui.open(screen);
+    });
+  </script>
+</body>
+</html>
