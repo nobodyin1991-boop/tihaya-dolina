@@ -16,7 +16,7 @@ import { act, live, safe, render, itemCard, gameNow, percent, STATE_EVENTS } fro
 
 const RARITY_ORDER = { legendary: 0, epic: 1, rare: 2, fine: 3, common: 4 };
 const TYPE_ORDER = { weapon: 0, armor: 1, bag: 2, tool: 3, consumable: 4, material: 5, trade: 6, note: 7, quest: 8 };
-const SLOT_SHORT = { offhand: 'Л. рука', armor: 'Грудь', tool: 'Инстр.', trinket: 'Амулет' };
+const SLOT_SHORT = { offhand: 'Л. рука', armor: 'Грудь', tool: 'Инстр.', trinket: 'Украш.' };
 const SLOT_GHOSTS = {
   weapon: 'sword', offhand: 'shield', armor: 'armor', helmet: 'helmet', gloves: 'gloves', boots: 'boots',
   cloak: 'cloak', bag: 'bag', tool: 'tool', trinket: 'gem',

@@ -252,9 +252,9 @@ function shieldGeos(kind, o) {
   const body = shieldPlate(rows, w, 0.05, color, 0);
   const rim = shieldPlate(rows, w + 0.035, 0.03, trim, 1);
   const geos = [rim, body, ball(0.06, trim, [0, h * 0.1, 0.07], [1, 1, 0.55], { metal: 1, segs: 8, rings: 5 })];
+  // decoration is a single plain band; no emblems or symbols on shields
   if (o.emblem !== false) {
-    geos.push(slab(0.05, h * 0.62, 0.012, o.emblemColor || P.gold, [0, 0, 0.066]));
-    if (!tall) geos.push(slab(w * 0.55, 0.05, 0.012, o.emblemColor || P.gold, [0, h * 0.14, 0.064]));
+    geos.push(slab(w * (tall ? 0.8 : 0.6), 0.05, 0.012, o.emblemColor || P.gold, [0, tall ? 0 : -h * 0.08, 0.064]));
   }
   if (tall) {
     for (const y of [-0.34, 0.36]) geos.push(slab(w * 0.9, 0.04, 0.02, trim, [0, y, 0.058], [0, 0, 0], M));

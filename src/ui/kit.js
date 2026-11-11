@@ -17,7 +17,7 @@ export const ITEM_TYPE_NAMES = {
 };
 export const SLOT_NAMES = {
   weapon: 'Оружие', offhand: 'Левая рука', armor: 'Нагрудник', helmet: 'Шлем', gloves: 'Перчатки', boots: 'Сапоги',
-  cloak: 'Плащ', trinket: 'Амулет', bag: 'Сумка', tool: 'Инструмент',
+  cloak: 'Плащ', trinket: 'Украшение', bag: 'Сумка', tool: 'Инструмент',
 };
 export const STAT_NAMES = {
   maxHp: 'Здоровье', maxStamina: 'Выносливость', attack: 'Атака', armor: 'Броня', critChance: 'Шанс крит. удара',

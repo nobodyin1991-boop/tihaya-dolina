@@ -123,7 +123,7 @@ export const EXTRA_PROPS = ({ barrel, crate, sack, logs, wheel }) => ({
     for (let i = 0; i < 5; i++) m.ico(0.3, i % 2 ? 0x5f5650 : 0x74584a, (rng() - 0.5) * 0.7, 1.15, (rng() - 0.5) * 1.1, { noise: 0.3 });
   },
   statue: (m, rng) => {
-    // a miner with a pick — the founder of the town
+    // a miner with a sledgehammer — the founder of the town
     m.box(1.9, 0.4, 1.9, P.stoneDark, 0, 0, 0, { vj: 0.05, nb: true });
     m.box(1.4, 1.3, 1.4, P.stone, 0, 0.4, 0, { vj: 0.05, top: [0.9, 0.9] });
     const c = 0x8f8d84;
@@ -134,7 +134,7 @@ export const EXTRA_PROPS = ({ barrel, crate, sack, logs, wheel }) => ({
     m.box(0.16, 0.7, 0.16, c, -0.42, 2.72, 0.05, { rz: -0.25 });
     m.box(0.16, 0.75, 0.16, c, 0.44, 3.0, 0.1, { rz: 2.4 });
     m.box(0.07, 1.5, 0.07, c, 0.8, 2.5, 0.12, { rz: 0.3 });
-    m.box(0.7, 0.1, 0.1, c, 0.6, 3.9, 0.12, { rz: 0.3 });
+    m.box(0.34, 0.26, 0.26, c, 0.58, 3.2, 0.12, { rz: 0.3 });
   },
   fountain: (m, rng) => {
     for (let i = 0; i < 12; i++) {
